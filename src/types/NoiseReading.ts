@@ -4,7 +4,10 @@ export interface NoiseReading {
   id: string;
   userId: string;
   decibelLevel: number;
-  location: {
+  // Support both flat structure (mobile app) and nested structure
+  latitude?: number;
+  longitude?: number;
+  location?: {
     latitude: number;
     longitude: number;
   } | {
@@ -14,7 +17,8 @@ export interface NoiseReading {
     coordinates: [number, number]; // [lng, lat]
   };
   locationName?: string;
-  soundCategory: string;
+  soundCategory?: string;
+  soundClass?: string;  // Mobile app uses soundClass
   soundType?: 'Pollution' | 'Ambient' | 'Both' | 'Unknown';
   confidence: number;
   timestamp: Timestamp;

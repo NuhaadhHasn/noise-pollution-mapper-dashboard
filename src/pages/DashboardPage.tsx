@@ -144,7 +144,7 @@ export default function DashboardPage() {
             borderColor: isDarkMode ? '#4A4458' : '#E0E0E0'
           }}
         >
-          <div className="h-64 sm:h-80 lg:h-96 w-full overflow-auto">
+          <div className="h-64 sm:h-72 lg:h-80 w-full overflow-hidden">
             <ErrorBoundary fallback={
               <div 
                 className="h-full w-full flex items-center justify-center"

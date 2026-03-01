@@ -60,18 +60,13 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
         // Debug: Log first 3 documents to see structure
         if (snapshot.docs.indexOf(doc) < 3) {
           console.log(`Reading ${doc.id}:`, readingData);
-          console.log(`  Location field:`, readingData.location);
-          console.log(`  Location type:`, typeof readingData.location);
-          console.log(`  Location constructor:`, readingData.location?.constructor?.name);
-          if (readingData.location) {
-            console.log(`  Location keys:`, Object.keys(readingData.location));
-            console.log(`  Has latitude:`, 'latitude' in readingData.location);
-            console.log(`  Has longitude:`, 'longitude' in readingData.location);
-            console.log(`  Has lat:`, 'lat' in readingData.location);
-            console.log(`  Has lng:`, 'lng' in readingData.location);
-          }
+          console.log(`  Has latitude:`, 'latitude' in readingData);
+          console.log(`  Has longitude:`, 'longitude' in readingData);
+          console.log(`  Latitude value:`, readingData.latitude);
+          console.log(`  Longitude value:`, readingData.longitude);
+          console.log(`  Has soundCategory:`, 'soundCategory' in readingData);
+          console.log(`  Has soundClass:`, 'soundClass' in readingData);
           console.log(`  Decibel level:`, readingData.decibelLevel);
-          console.log(`  Sound category:`, readingData.soundCategory);
           console.log('---');
         }
         return {
@@ -91,28 +86,34 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
 
   // Apply filters and validate data
   const filteredReadings = readings.filter(reading => {
-    // Validate location exists and has valid coordinates
+    // Validate location exists (flat structure: latitude/longitude at root level)
     let isValidLocation = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const read = reading as any;
     
-    if (reading.location) {
+    // Check for flat structure (latitude/longitude at root level)
+    if (typeof read.latitude === 'number' && typeof read.longitude === 'number') {
+      isValidLocation = true;
+    }
+    // Check for nested structure (location.latitude/location.longitude)
+    else if (reading.location) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const loc = reading.location as any;
-      // Try standard format: { latitude, longitude }
       if (typeof loc.latitude === 'number' && typeof loc.longitude === 'number') {
         isValidLocation = true;
       }
-      // Try GeoJSON format: { lat, lng }
-      else if (typeof loc.lat === 'number' && typeof loc.lng === 'number') {
-        isValidLocation = true;
-      }
-      // Try GeoJSON Point: { coordinates: [lng, lat] }
-      else if (Array.isArray(loc.coordinates) && loc.coordinates.length >= 2) {
-        isValidLocation = true;
-      }
+    }
+    // Check for GeoJSON format (lat/lng at root level)
+    else if (typeof read.lat === 'number' && typeof read.lng === 'number') {
+      isValidLocation = true;
+    }
+    // Check for GeoJSON Point (coordinates array at root level)
+    else if (Array.isArray(read.coordinates) && read.coordinates.length >= 2) {
+      isValidLocation = true;
     }
     
     if (!isValidLocation) {
-      console.warn('Invalid location data for reading:', reading.id, reading.location);
+      console.warn('Invalid location data for reading:', reading.id, reading);
       return false;
     }
     
@@ -130,9 +131,11 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
       }
     }
     
-    // Apply category filter
+    // Apply category filter (check both soundCategory and soundClass)
     if (filters?.categories && filters.categories.length > 0) {
-      if (!filters.categories.includes(reading.soundCategory)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const category = (reading as any).soundCategory || (reading as any).soundClass;
+      if (!filters.categories.includes(category)) {
         return false;
       }
     }
@@ -183,27 +186,45 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
   return (
     <>
       {filteredReadings.map((reading) => {
-        // Extract coordinates using flexible format detection
+        // Extract coordinates - check flat structure first
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const loc = reading.location as any;
+        const read = reading as any;
         let lat: number | undefined;
         let lng: number | undefined;
         
-        if (typeof loc?.latitude === 'number') {
-          lat = loc.latitude;
-          lng = loc.longitude;
-        } else if (typeof loc?.lat === 'number') {
-          lat = loc.lat;
-          lng = loc.lng;
-        } else if (Array.isArray(loc?.coordinates)) {
-          lng = loc.coordinates[0];
-          lat = loc.coordinates[1];
+        // Flat structure (latitude/longitude at root level)
+        if (typeof read?.latitude === 'number' && typeof read?.longitude === 'number') {
+          lat = read.latitude;
+          lng = read.longitude;
+        }
+        // Nested structure (location.latitude/location.longitude)
+        else if (reading.location) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const loc = reading.location as any;
+          if (typeof loc.latitude === 'number') {
+            lat = loc.latitude;
+            lng = loc.longitude;
+          }
+        }
+        // GeoJSON format (lat/lng at root level)
+        else if (typeof read?.lat === 'number' && typeof read?.lng === 'number') {
+          lat = read.lat;
+          lng = read.lng;
+        }
+        // GeoJSON Point (coordinates array at root level)
+        else if (Array.isArray(read?.coordinates)) {
+          lng = read.coordinates[0];
+          lat = read.coordinates[1];
         }
         
         // Skip if no valid coordinates
         if (!lat || !lng) {
           return null;
         }
+        
+        // Get category (check both soundCategory and soundClass)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const category = (reading as any).soundCategory || (reading as any).soundClass || 'Unknown';
         
         return (
           <Marker
@@ -232,7 +253,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
                   {/* Sound Category */}
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">Category:</span>
-                    <span className="text-sm font-medium">{reading.soundCategory}</span>
+                    <span className="text-sm font-medium">{category}</span>
                   </div>
 
                   {/* Sound Type */}
