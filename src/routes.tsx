@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useTheme } from '@/contexts/ThemeContext';
 import LoginPage from '@/pages/LoginPage';
 import DashboardPage from '@/pages/DashboardPage';
+import MapPage from '@/pages/MapPage';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 function AppRoutes() {
@@ -15,7 +16,7 @@ function AppRoutes() {
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
-        
+
         {/* Protected Routes */}
         <Route
           path="/dashboard"
@@ -25,7 +26,15 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
-        
+        <Route
+          path="/map"
+          element={
+            <ProtectedRoute>
+              <MapPage />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Default redirect to dashboard (will check auth) */}
         <Route
           path="/"

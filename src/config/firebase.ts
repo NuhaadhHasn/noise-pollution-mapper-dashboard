@@ -8,7 +8,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore/lite';
+import { getFirestore } from 'firebase/firestore'; // Changed from 'firebase/firestore/lite' to support onSnapshot
 import { getStorage } from 'firebase/storage';
 
 // Firebase configuration from environment variables
