@@ -7,17 +7,24 @@ import { db } from '@/config/firebase';
 import type { NoiseReading } from '@/types/NoiseReading';
 import { format } from 'date-fns';
 
-// Custom marker icon factory
+// Custom marker icon factory - Pin-shaped marker
 function createMarkerIcon(color: string): Icon {
   return new Icon({
     iconUrl: `data:image/svg+xml;base64,${btoa(`
-      <svg width="30" height="40" viewBox="0 0 30 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="15" cy="15" r="15" fill="${color}"/>
+      <svg width="32" height="42" viewBox="0 0 32 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Pin shape (teardrop) -->
+        <path d="M16 0C7.163 0 0 7.163 0 16C0 26.5 16 42 16 42C16 42 32 26.5 32 16C32 7.163 24.837 0 16 0Z" fill="${color}"/>
+        <!-- White border -->
+        <path d="M16 0C7.163 0 0 7.163 0 16C0 26.5 16 42 16 42C16 42 32 26.5 32 16C32 7.163 24.837 0 16 0Z" fill="none" stroke="white" stroke-width="2.5"/>
+        <!-- Inner white circle for contrast -->
+        <circle cx="16" cy="14" r="6" fill="white"/>
+        <!-- Colored center dot -->
+        <circle cx="16" cy="14" r="4" fill="${color}"/>
       </svg>
     `)}`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    popupAnchor: [0, -15],
+    iconSize: [32, 42],
+    iconAnchor: [16, 42], // Point at bottom center
+    popupAnchor: [0, -42], // Popup opens above marker
   });
 }
 
@@ -51,6 +58,12 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
   const [isLoading, setIsLoading] = useState(true);
   const map = useMap();
 
+  // Cache markers to avoid rebuilding on every render
+  const [cachedMarkers, setCachedMarkers] = useState<{
+    data: NoiseReading[];
+    timestamp: number;
+  } | null>(null);
+
   useEffect(() => {
     const q = query(collection(db, 'noise_readings'));
 
@@ -74,15 +87,26 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
           ...readingData,
         };
       }) as NoiseReading[];
+      
+      // Cache the data with timestamp
+      setCachedMarkers({
+        data,
+        timestamp: Date.now(),
+      });
+      
       setReadings(data);
       setIsLoading(false);
+      
+      if (onMarkersLoaded) {
+        onMarkersLoaded(data.length);
+      }
     }, (error) => {
       console.error('Error fetching noise readings:', error);
       setIsLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [onMarkersLoaded]);
 
   // Apply filters and validate data
   const filteredReadings = readings.filter(reading => {
@@ -90,7 +114,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
     let isValidLocation = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const read = reading as any;
-
+    
     // Check for flat structure (latitude/longitude at root level)
     if (typeof read.latitude === 'number' && typeof read.longitude === 'number') {
       isValidLocation = true;
@@ -111,18 +135,18 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
     else if (Array.isArray(read.coordinates) && read.coordinates.length >= 2) {
       isValidLocation = true;
     }
-
+    
     if (!isValidLocation) {
       console.warn('Invalid location data for reading:', reading.id, reading);
       return false;
     }
-
+    
     // Validate decibel level
     if (typeof reading.decibelLevel !== 'number') {
       console.warn('Invalid decibel level for reading:', reading.id);
       return false;
     }
-
+    
     // Apply dB filter
     if (filters?.dbRange) {
       if (reading.decibelLevel < filters.dbRange.min ||
@@ -130,7 +154,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
         return false;
       }
     }
-
+    
     // Apply category filter (check both soundCategory and soundClass)
     if (filters?.categories && filters.categories.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,7 +163,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
         return false;
       }
     }
-
+    
     // Apply date filter
     if (filters?.dateRange) {
       const readingDate = reading.timestamp?.toDate?.();
@@ -148,9 +172,16 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
         return false;
       }
     }
-
+    
     return true;
   });
+
+  // Use cached markers if data hasn't changed (performance optimization)
+  const markersToRender = cachedMarkers && 
+    cachedMarkers.data.length === readings.length &&
+    Date.now() - cachedMarkers.timestamp < 5000 // Cache for 5 seconds
+    ? cachedMarkers.data
+    : readings;
 
   // Notify parent of marker count
   useEffect(() => {
