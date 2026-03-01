@@ -32,6 +32,7 @@ export function MapComponent({ children }: MapComponentProps) {
       maxBounds={SRI_LANKA_BOUNDS}
       maxBoundsViscosity={1.0}
       className="w-full h-[400px] md:h-[600px] z-0"
+      style={{ overflow: 'visible' }}
     >
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

@@ -39,7 +39,7 @@ interface NoiseMarkersProps {
 
 /**
  * NoiseMarkers - Displays noise readings as markers on the map
- * 
+ *
  * Features:
  * - Real-time Firestore sync
  * - Color-coded by dB level
@@ -90,7 +90,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
     let isValidLocation = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const read = reading as any;
-    
+
     // Check for flat structure (latitude/longitude at root level)
     if (typeof read.latitude === 'number' && typeof read.longitude === 'number') {
       isValidLocation = true;
@@ -111,18 +111,18 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
     else if (Array.isArray(read.coordinates) && read.coordinates.length >= 2) {
       isValidLocation = true;
     }
-    
+
     if (!isValidLocation) {
       console.warn('Invalid location data for reading:', reading.id, reading);
       return false;
     }
-    
+
     // Validate decibel level
     if (typeof reading.decibelLevel !== 'number') {
       console.warn('Invalid decibel level for reading:', reading.id);
       return false;
     }
-    
+
     // Apply dB filter
     if (filters?.dbRange) {
       if (reading.decibelLevel < filters.dbRange.min ||
@@ -130,7 +130,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
         return false;
       }
     }
-    
+
     // Apply category filter (check both soundCategory and soundClass)
     if (filters?.categories && filters.categories.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,7 +139,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
         return false;
       }
     }
-    
+
     // Apply date filter
     if (filters?.dateRange) {
       const readingDate = reading.timestamp?.toDate?.();
@@ -148,7 +148,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
         return false;
       }
     }
-    
+
     return true;
   });
 
@@ -191,7 +191,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
         const read = reading as any;
         let lat: number | undefined;
         let lng: number | undefined;
-        
+
         // Flat structure (latitude/longitude at root level)
         if (typeof read?.latitude === 'number' && typeof read?.longitude === 'number') {
           lat = read.latitude;
@@ -216,16 +216,16 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
           lng = read.coordinates[0];
           lat = read.coordinates[1];
         }
-        
+
         // Skip if no valid coordinates
         if (!lat || !lng) {
           return null;
         }
-        
+
         // Get category (check both soundCategory and soundClass)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const category = (reading as any).soundCategory || (reading as any).soundClass || 'Unknown';
-        
+
         return (
           <Marker
             key={reading.id}
@@ -246,7 +246,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
                       className="px-2 py-1 rounded text-xs font-semibold text-white"
                       style={{ backgroundColor: getMarkerColor(reading.decibelLevel) }}
                     >
-                      {reading.decibelLevel} dB
+                      {reading.decibelLevel.toFixed(1)} dB
                     </span>
                   </div>
 

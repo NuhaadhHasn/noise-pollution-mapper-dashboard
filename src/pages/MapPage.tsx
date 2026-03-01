@@ -18,9 +18,9 @@ export default function MapPage() {
 
   return (
     <div className="relative w-full overflow-hidden bg-gray-200 dark:bg-gray-900" style={{ height: 'calc(100vh - 7rem)' }}>
-      {/* Top Bar - Compact width */}
+      {/* Top Bar - Right aligned */}
       <div
-        className={`absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-3 h-12 ${
+        className={`absolute top-4 right-4 z-[400] flex items-center gap-3 h-12 ${
           isDarkMode ? 'bg-[#2D2640]/95' : 'bg-white/95'
         } backdrop-blur-sm rounded-lg shadow-lg px-4`}
         style={{ width: 'fit-content', maxWidth: 'calc(100vw - 2rem)' }}
@@ -71,7 +71,7 @@ export default function MapPage() {
       </div>
 
       {/* Marker Count Badge */}
-      <div className={`absolute bottom-4 left-4 z-[1000] px-3 py-1.5 rounded-lg shadow-lg ${
+      <div className={`absolute bottom-4 left-4 z-[400] px-3 py-1.5 rounded-lg shadow-lg ${
         isDarkMode ? 'bg-[#2D2640] text-white' : 'bg-white text-gray-900'
       }`}>
         <div className="flex items-center gap-2">
@@ -99,7 +99,20 @@ export default function MapPage() {
           </div>
         }>
           <MapComponent>
-            <MarkerClusterGroup>
+            <MarkerClusterGroup options={{
+              maxClusterRadius: 40,  // Smaller clusters = faster
+              disableClusteringAtZoom: 15,  // Show individual markers earlier
+              spiderfyOnMaxZoom: true,
+              showCoverageOnHover: false,
+              spiderfyDistanceMultiplier: 1.5,  // Tighter spacing
+              zoomToBoundsOnClick: true,
+              animate: false,
+              animateAddingMarkers: false,
+              removeOutsideVisibleBounds: true,
+              chunkedLoading: true,
+              chunkInterval: 100,  // Faster chunks (was 200ms)
+              chunkDelay: 0,  // No delay between chunks (was 50ms)
+            }}>
               <NoiseMarkers onMarkersLoaded={setMarkerCount} />
             </MarkerClusterGroup>
           </MapComponent>
@@ -108,7 +121,7 @@ export default function MapPage() {
 
       {/* Filter Panel (for Phase 2.3) */}
       {showFilters && (
-        <div className={`absolute top-20 left-4 w-80 z-[999] rounded-lg shadow-lg p-4 ${
+        <div className={`absolute top-20 left-4 w-80 z-[399] rounded-lg shadow-lg p-4 ${
           isDarkMode ? 'bg-[#2D2640]' : 'bg-white'
         }`}>
           <h3 className="font-semibold mb-4">Filters</h3>
