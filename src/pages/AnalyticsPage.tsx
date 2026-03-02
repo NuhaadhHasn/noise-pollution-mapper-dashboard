@@ -3,13 +3,9 @@ import { cn } from '@/lib/utils';
 import { MapPin, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { MapComponent } from '@/components/map/MapContainer';
-import { NoiseMarkers } from '@/components/map/NoiseMarkers';
-import MarkerClusterGroup from '@/components/map/MarkerClusterGroup';
 import { StatsCards } from '@/components/analytics/StatsCards';
 import { NoiseTrendChart } from '@/components/analytics/NoiseTrendChart';
 import { CategoryChart } from '@/components/analytics/CategoryChart';
@@ -17,7 +13,7 @@ import { SoundTypeChart } from '@/components/analytics/SoundTypeChart';
 
 export default function AnalyticsPage() {
   const navigate = useNavigate();
-  const { isDarkMode, getCardColor } = useTheme();
+  const { isDarkMode } = useTheme();
   const [markerCount, setMarkerCount] = useState(0);
 
   // Fetch marker count from Firebase
