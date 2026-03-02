@@ -40,6 +40,8 @@ interface NoiseMarkersProps {
     dateRange?: { start: Date; end: Date };
     categories?: string[];
     dbRange?: { min: number; max: number };
+    userId?: string; // Filter by specific user (Phase 1)
+    showAllUsers?: boolean; // Show all users' readings (Phase 2)
   };
   onMarkersLoaded?: (count: number) => void;
   onDataChange?: (data: NoiseReading[]) => void;
@@ -175,7 +177,17 @@ export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMa
         return false;
       }
     }
-    
+
+    // Apply user filter (Phase 1: User-Based Restrictions)
+    if (filters?.userId && !filters?.showAllUsers) {
+      // Filter by specific user's readings
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const read = reading as any;
+      if (read.userId !== filters.userId) {
+        return false;
+      }
+    }
+
     return true;
   });
 

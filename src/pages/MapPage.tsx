@@ -5,20 +5,24 @@ import { NoiseMarkers } from '@/components/map/NoiseMarkers';
 import MarkerClusterGroup from '@/components/map/MarkerClusterGroup';
 import { HeatmapLayer } from '@/components/map/HeatmapLayer';
 import { SyncStatus } from '@/components/map/SyncStatus';
+import { UserFilterToggle } from '@/components/map/UserFilterToggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MapPin, Search, Crosshair, Filter, ArrowLeft, Layers } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { useAuth } from '@/contexts/AuthContext';
 import type { NoiseReading } from '@/types/NoiseReading';
 
 export default function MapPage() {
   const navigate = useNavigate();
+  const { user } = useAuth(); // Get current user
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [markerCount, setMarkerCount] = useState(0);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [readingsData, setReadingsData] = useState<NoiseReading[]>([]);
+  const [showAllUsers, setShowAllUsers] = useState(false); // Phase 1: User filter
   const { isDarkMode, primaryColor } = useTheme();
 
   return (
@@ -137,7 +141,11 @@ export default function MapPage() {
               chunkInterval: 100,  // Faster chunks (was 200ms)
               chunkDelay: 0,  // No delay between chunks (was 50ms)
             }}>
-              <NoiseMarkers 
+              <NoiseMarkers
+                filters={{
+                  userId: user?.uid || '',
+                  showAllUsers,
+                }}
                 onMarkersLoaded={setMarkerCount}
                 onDataChange={setReadingsData}
               />
@@ -147,15 +155,48 @@ export default function MapPage() {
         </ErrorBoundary>
       </div>
 
-      {/* Filter Panel (for Phase 2.3) */}
+      {/* Filter Panel */}
       {showFilters && (
         <div className={`absolute top-20 left-4 w-80 z-[399] rounded-lg shadow-lg p-4 ${
           isDarkMode ? 'bg-[#2D2640]' : 'bg-white'
         }`}>
           <h3 className="font-semibold mb-4">Filters</h3>
-          <p className="text-sm text-gray-500">
-            Filter by date, category, and noise level - Phase 2.3
-          </p>
+          
+          {/* User Filter Section */}
+          <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <label className={`text-sm font-medium mb-2 block ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Data Source
+            </label>
+            <UserFilterToggle 
+              showAllUsers={showAllUsers}
+              onFilterChange={setShowAllUsers}
+            />
+            <p className={`text-xs mt-2 ${
+              isDarkMode ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              {showAllUsers 
+                ? 'Showing readings from all users' 
+                : 'Showing only your readings'}
+            </p>
+          </div>
+          
+          {/* Placeholder for Phase 2.3 filters */}
+          <div>
+            <p className={`text-sm ${
+              isDarkMode ? 'text-gray-400' : 'text-gray-500'
+            }`}>
+              More filters coming soon:
+            </p>
+            <ul className={`text-xs mt-2 space-y-1 ${
+              isDarkMode ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              <li>• Date range</li>
+              <li>• Category</li>
+              <li>• Noise level</li>
+            </ul>
+          </div>
         </div>
       )}
     </div>
