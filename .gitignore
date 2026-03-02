@@ -50,3 +50,4 @@ ui-debug.log
 # OS
 Thumbs.db
 Desktop.ini
+/serviceAccountKey.json

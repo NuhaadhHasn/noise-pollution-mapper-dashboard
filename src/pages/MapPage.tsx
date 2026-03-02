@@ -6,6 +6,7 @@ import MarkerClusterGroup from '@/components/map/MarkerClusterGroup';
 import { HeatmapLayer } from '@/components/map/HeatmapLayer';
 import { SyncStatus } from '@/components/map/SyncStatus';
 import { UserFilterToggle } from '@/components/map/UserFilterToggle';
+import { DateRangeFilter } from '@/components/map/DateRangeFilter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MapPin, Search, Crosshair, Filter, ArrowLeft, Layers } from 'lucide-react';
@@ -23,6 +24,7 @@ export default function MapPage() {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [readingsData, setReadingsData] = useState<NoiseReading[]>([]);
   const [showAllUsers, setShowAllUsers] = useState(false); // Phase 1: User filter
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date } | null>(null); // Phase 3: Date filter (null = all time)
   const { isDarkMode, primaryColor } = useTheme();
 
   return (
@@ -145,6 +147,7 @@ export default function MapPage() {
                 filters={{
                   userId: user?.uid || '',
                   showAllUsers,
+                  dateRange: dateRange || undefined,
                 }}
                 onMarkersLoaded={setMarkerCount}
                 onDataChange={setReadingsData}
@@ -182,7 +185,26 @@ export default function MapPage() {
             </p>
           </div>
           
-          {/* Placeholder for Phase 2.3 filters */}
+          {/* Date Range Filter Section (Phase 3) */}
+          <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <label className={`text-sm font-medium mb-2 block ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Date Range
+            </label>
+            <DateRangeFilter
+              onDateRangeChange={setDateRange}
+            />
+            <p className={`text-xs mt-2 ${
+              isDarkMode ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              {dateRange 
+                ? `From ${dateRange.start.toLocaleDateString()} to ${dateRange.end.toLocaleDateString()}`
+                : 'Showing all dates'}
+            </p>
+          </div>
+          
+          {/* Placeholder for future filters */}
           <div>
             <p className={`text-sm ${
               isDarkMode ? 'text-gray-400' : 'text-gray-500'
@@ -192,7 +214,6 @@ export default function MapPage() {
             <ul className={`text-xs mt-2 space-y-1 ${
               isDarkMode ? 'text-gray-500' : 'text-gray-400'
             }`}>
-              <li>• Date range</li>
               <li>• Category</li>
               <li>• Noise level</li>
             </ul>

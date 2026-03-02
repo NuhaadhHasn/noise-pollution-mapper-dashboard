@@ -15,7 +15,13 @@ import type { NoiseReading } from '@/types/NoiseReading';
 
 const LAST_SYNC_KEY = 'lastSyncTime';
 const FIRST_SYNC_DONE_KEY = 'firstSyncDone';
-const MAX_INITIAL_READINGS = 500; // Limit first sync to avoid cost
+
+/**
+ * Maximum readings to fetch on first sync
+ * Set to 0 to fetch ALL readings (no limit)
+ * Set to any number > 0 to limit (e.g., 500)
+ */
+const MAX_INITIAL_READINGS = 0; // 0 = fetch ALL, >0 = limit to this number
 
 /**
  * Get last sync time from IndexedDB
@@ -50,11 +56,12 @@ export async function setFirstSyncDone(): Promise<void> {
 
 /**
  * Perform delta sync - fetch only new/updated readings since last sync
- * 
+ *
  * Returns:
  * - newCount: Number of new readings fetched
  * - updatedCount: Number of updated readings (always 0 for now)
  * - lastSync: Timestamp of this sync
+ * - totalReadings: Total readings in cache
  */
 export async function syncNewReadings(): Promise<{
   newCount: number;
@@ -65,25 +72,59 @@ export async function syncNewReadings(): Promise<{
   try {
     const lastSync = await getLastSyncTime();
     const firstSyncDone = await isFirstSyncDone();
+    const cacheDownloaded = await localDb.getSyncMetadata('cacheDownloaded');
     
     let newReadings: NoiseReading[] = [];
     
-    if (!firstSyncDone) {
-      // First ever sync - fetch limited set (500 most recent)
-      console.log('[Sync] First sync - fetching initial 500 readings...');
-      const q = query(
-        collection(firebaseDb, 'noise_readings'),
-        orderBy('timestamp', 'desc'),
-        limit(MAX_INITIAL_READINGS)
-      );
+    // If cache was downloaded, skip first sync limit
+    if (cacheDownloaded) {
+      // Cache exists - syncing only new readings
+      if (lastSync) {
+        // Delta sync - fetch only readings newer than last sync
+        const q = query(
+          collection(firebaseDb, 'noise_readings'),
+          where('timestamp', '>', Timestamp.fromDate(lastSync))
+        );
+        
+        const snapshot = await getDocs(q);
+        newReadings = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as NoiseReading[];
+        
+        // Update IndexedDB with new readings
+        if (newReadings.length > 0) {
+          await localDb.updateManyReadings(newReadings);
+        }
+      }
+    } else if (!firstSyncDone) {
+      // First ever sync - fetch ALL or limited readings based on MAX_INITIAL_READINGS
+      let q;
+      if (MAX_INITIAL_READINGS > 0) {
+        // Limited fetch (for testing/cost control)
+        q = query(
+          collection(firebaseDb, 'noise_readings'),
+          orderBy('timestamp', 'desc'),
+          limit(MAX_INITIAL_READINGS)
+        );
+      } else {
+        // Fetch ALL readings (no limit)
+        q = query(
+          collection(firebaseDb, 'noise_readings'),
+          orderBy('timestamp', 'desc')
+        );
+      }
       
       const snapshot = await getDocs(q);
-      newReadings = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as NoiseReading[];
+      newReadings = snapshot.docs.map(doc => {
+        const data = doc.data() as NoiseReading;
+        return {
+          id: doc.id,
+          ...data,
+        };
+      });
       
-      console.log(`[Sync] Fetched ${newReadings.length} initial readings`);
+      console.log(`[Sync] First sync: Fetched ${newReadings.length} readings (MAX_INITIAL_READINGS: ${MAX_INITIAL_READINGS})`);
       
       // Save to IndexedDB
       await localDb.setManyReadings(newReadings);
@@ -91,20 +132,19 @@ export async function syncNewReadings(): Promise<{
       
     } else if (lastSync) {
       // Delta sync - fetch only readings newer than last sync
-      console.log('[Sync] Delta sync since', lastSync);
-      
       const q = query(
         collection(firebaseDb, 'noise_readings'),
         where('timestamp', '>', Timestamp.fromDate(lastSync))
       );
       
       const snapshot = await getDocs(q);
-      newReadings = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as NoiseReading[];
-      
-      console.log(`[Sync] Fetched ${newReadings.length} new readings`);
+      newReadings = snapshot.docs.map(doc => {
+        const data = doc.data() as NoiseReading;
+        return {
+          id: doc.id,
+          ...data,
+        };
+      });
       
       // Update IndexedDB with new readings
       if (newReadings.length > 0) {

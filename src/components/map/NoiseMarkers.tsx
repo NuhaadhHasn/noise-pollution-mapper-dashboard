@@ -171,7 +171,45 @@ export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMa
     
     // Apply date filter
     if (filters?.dateRange) {
-      const readingDate = reading.timestamp?.toDate?.();
+      let readingDate: Date | undefined;
+      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const read = reading as any;
+      
+      // Handle Firestore Timestamp object from IndexedDB (stored as { seconds, nanoseconds })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const timestampAny = reading.timestamp as any;
+      if (timestampAny?.seconds) {
+        readingDate = new Date(timestampAny.seconds * 1000);
+      }
+      // Handle Firestore Timestamp with toDate() method
+      else if (reading.timestamp?.toDate) {
+        readingDate = reading.timestamp.toDate();
+      }
+      // Handle ISO string
+      else if (typeof reading.timestamp === 'string') {
+        readingDate = new Date(reading.timestamp);
+      }
+      // Handle numeric timestamp (milliseconds)
+      else if (typeof reading.timestamp === 'number') {
+        readingDate = new Date(reading.timestamp);
+      }
+      // Handle nested timestamp (createdAt, updatedAt, etc.)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const createdAtAny = read.createdAt as any;
+      if (createdAtAny?.seconds) {
+        readingDate = new Date(createdAtAny.seconds * 1000);
+      }
+      else if (read.createdAt?.toDate) {
+        readingDate = read.createdAt.toDate();
+      }
+      else if (typeof read.createdAt === 'string') {
+        readingDate = new Date(read.createdAt);
+      }
+      else if (typeof read.createdAt === 'number') {
+        readingDate = new Date(read.createdAt);
+      }
+      
       if (!readingDate || readingDate < filters.dateRange.start ||
           readingDate > filters.dateRange.end) {
         return false;
