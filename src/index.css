@@ -125,3 +125,57 @@
     @apply bg-background text-foreground;
     }
 }
+
+/* Print styles - Only print data table */
+@media print {
+  /* Hide everything by default */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Hide sidebar, header, navigation */
+  .sidebar,
+  header,
+  nav,
+  button,
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Show only the data table section */
+  .data-export-section,
+  .data-export-section * {
+    visibility: visible;
+  }
+  
+  .data-export-section {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  
+  /* Print-friendly table styles */
+  table {
+    page-break-inside: auto;
+  }
+  
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  
+  thead {
+    display: table-header-group;
+  }
+  
+  tfoot {
+    display: table-footer-group;
+  }
+  
+  /* Black text on white background */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+}

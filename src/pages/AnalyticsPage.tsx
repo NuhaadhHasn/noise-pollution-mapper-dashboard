@@ -1,6 +1,6 @@
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
-import { MapPin, ExternalLink } from 'lucide-react';
+import { MapPin, ExternalLink, Download, FileJson, Printer } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
@@ -10,18 +10,36 @@ import { StatsCards } from '@/components/analytics/StatsCards';
 import { NoiseTrendChart } from '@/components/analytics/NoiseTrendChart';
 import { CategoryChart } from '@/components/analytics/CategoryChart';
 import { SoundTypeChart } from '@/components/analytics/SoundTypeChart';
+import { DataTable } from '@/components/analytics/DataTable';
+import { exportToCSV, exportToJSON } from '@/utils/exportHelpers';
+import type { NoiseReading } from '@/types/NoiseReading';
+import { fetchAllUsers, type UserInfo } from '@/services/userService';
 
 export default function AnalyticsPage() {
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
   const [markerCount, setMarkerCount] = useState(0);
+  const [readings, setReadings] = useState<NoiseReading[]>([]);
+  const [userMap, setUserMap] = useState<Map<string, UserInfo>>(new Map());
 
-  // Fetch marker count from Firebase
+  // Fetch data from Firebase
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'noise_readings'), (snapshot) => {
       setMarkerCount(snapshot.size);
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as NoiseReading[];
+      setReadings(data);
     });
     return () => unsubscribe();
+  }, []);
+
+  // Fetch users for email lookup
+  useEffect(() => {
+    fetchAllUsers().then((map) => {
+      setUserMap(map);
+    });
   }, []);
 
   return (
@@ -97,6 +115,52 @@ export default function AnalyticsPage() {
         <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
           <CategoryChart />
           <SoundTypeChart />
+        </div>
+
+        {/* Export Buttons */}
+        <div className="mt-6 data-export-section">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className={cn(
+              'text-base sm:text-lg font-semibold transition-colors',
+              isDarkMode ? 'text-white' : 'text-gray-900'
+            )}>
+              📊 Data Export
+            </h3>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportToCSV(readings, userMap, 'noise_readings')}
+                disabled={readings.length === 0}
+                className="text-xs sm:text-sm"
+              >
+                <Download className="w-3 h-3 mr-1" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportToJSON(readings, 'noise_readings')}
+                disabled={readings.length === 0}
+                className="text-xs sm:text-sm"
+              >
+                <FileJson className="w-3 h-3 mr-1" />
+                Export JSON
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.print()}
+                className="text-xs sm:text-sm"
+              >
+                <Printer className="w-3 h-3 mr-1" />
+                Print
+              </Button>
+            </div>
+          </div>
+
+          {/* Data Table */}
+          <DataTable data={readings} userMap={userMap} />
         </div>
       </div>
     </div>
