@@ -9,11 +9,12 @@ import { UserFilterToggle } from '@/components/map/UserFilterToggle';
 import { DateRangeFilter } from '@/components/map/DateRangeFilter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MapPin, Search, Crosshair, Filter, ArrowLeft, Layers } from 'lucide-react';
+import { MapPin, Search, Crosshair, Filter, ArrowLeft, Layers, RefreshCw } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import type { NoiseReading } from '@/types/NoiseReading';
+import * as syncManager from '@/utils/syncManager';
 
 export default function MapPage() {
   const navigate = useNavigate();
@@ -25,7 +26,27 @@ export default function MapPage() {
   const [readingsData, setReadingsData] = useState<NoiseReading[]>([]);
   const [showAllUsers, setShowAllUsers] = useState(false); // Phase 1: User filter
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date } | null>(null); // Phase 3: Date filter (null = all time)
+  const [isRefreshing, setIsRefreshing] = useState(false); // Force refresh state
   const { isDarkMode, primaryColor } = useTheme();
+
+  // Handle force full sync
+  const handleForceFullSync = async () => {
+    if (!confirm('This will clear the cache and fetch ALL readings from Firebase. This may take 2-3 minutes. Continue?')) {
+      return;
+    }
+
+    setIsRefreshing(true);
+    try {
+      const result = await syncManager.forceFullSync();
+      alert(`Successfully fetched ${result.newCount.toLocaleString()} readings!`);
+      window.location.reload(); // Reload to refresh map
+    } catch (error) {
+      console.error('Force full sync failed:', error);
+      alert('Failed to fetch all readings. Please try again.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   return (
     <div className="relative w-full overflow-hidden bg-gray-200 dark:bg-gray-900" style={{ height: 'calc(100vh - 7rem)' }}>
@@ -198,12 +219,36 @@ export default function MapPage() {
             <p className={`text-xs mt-2 ${
               isDarkMode ? 'text-gray-500' : 'text-gray-400'
             }`}>
-              {dateRange 
+              {dateRange
                 ? `From ${dateRange.start.toLocaleDateString()} to ${dateRange.end.toLocaleDateString()}`
                 : 'Showing all dates'}
             </p>
           </div>
-          
+
+          {/* Force Full Sync Button */}
+          <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <label className={`text-sm font-medium mb-2 block ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              Data Management
+            </label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleForceFullSync}
+              disabled={isRefreshing}
+              className="w-full"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Fetching...' : 'Fetch All Readings'}
+            </Button>
+            <p className={`text-xs mt-2 ${
+              isDarkMode ? 'text-gray-500' : 'text-gray-400'
+            }`}>
+              Clear cache and fetch ALL readings from Firebase
+            </p>
+          </div>
+
           {/* Placeholder for future filters */}
           <div>
             <p className={`text-sm ${

@@ -105,9 +105,9 @@ export default function Layout({ children }: LayoutProps) {
               'w-full justify-start transition-colors whitespace-nowrap',
               isDarkMode ? 'text-gray-300 hover:text-white hover:bg-gray-700' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
             )}
-            disabled
+            onClick={() => navigate('/analytics')}
           >
-            📈 Analytics (Coming Soon)
+            📈 Analytics
           </Button>
           <Button
             variant="ghost"

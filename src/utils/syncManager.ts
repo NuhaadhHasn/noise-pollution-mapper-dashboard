@@ -224,3 +224,44 @@ export async function clearSyncData(): Promise<void> {
   await localDb.setSyncMetadata(LAST_SYNC_KEY, null);
   await localDb.setSyncMetadata(FIRST_SYNC_DONE_KEY, null);
 }
+
+/**
+ * Force full sync - clear cache and fetch ALL readings
+ * Use this when cache was synced with limit and needs to be refreshed
+ */
+export async function forceFullSync(): Promise<{
+  newCount: number;
+  totalReadings: number;
+}> {
+  try {
+    // Clear existing cache
+    await clearSyncData();
+
+    // Fetch ALL readings (no limit)
+    const q = query(
+      collection(firebaseDb, 'noise_readings'),
+      orderBy('timestamp', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+    const newReadings = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as NoiseReading[];
+
+    // Save to IndexedDB
+    await localDb.setManyReadings(newReadings);
+    await setFirstSyncDone();
+    await setLastSyncTime(new Date());
+
+    console.log(`[Sync] Force full sync: Fetched ${newReadings.length} readings`);
+
+    return {
+      newCount: newReadings.length,
+      totalReadings: newReadings.length,
+    };
+  } catch (error) {
+    console.error('[Sync] Force full sync failed:', error);
+    throw error;
+  }
+}

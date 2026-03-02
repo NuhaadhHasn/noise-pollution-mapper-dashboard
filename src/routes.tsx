@@ -3,6 +3,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import LoginPage from '@/pages/LoginPage';
 import DashboardPage from '@/pages/DashboardPage';
 import MapPage from '@/pages/MapPage';
+import AnalyticsPage from '@/pages/AnalyticsPage';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 function AppRoutes() {
@@ -31,6 +32,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <MapPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute>
+              <AnalyticsPage />
             </ProtectedRoute>
           }
         />
