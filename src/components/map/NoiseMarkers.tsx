@@ -2,10 +2,10 @@ import { Marker, Popup, useMap } from 'react-leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { Icon } from 'leaflet';
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query } from 'firebase/firestore';
-import { db } from '@/config/firebase';
 import type { NoiseReading } from '@/types/NoiseReading';
 import { format } from 'date-fns';
+import * as localDb from '@/utils/db';
+import * as syncManager from '@/utils/syncManager';
 
 // Custom marker icon factory - Pin-shaped marker
 function createMarkerIcon(color: string): Icon {
@@ -42,6 +42,7 @@ interface NoiseMarkersProps {
     dbRange?: { min: number; max: number };
   };
   onMarkersLoaded?: (count: number) => void;
+  onDataChange?: (data: NoiseReading[]) => void;
 }
 
 /**
@@ -53,60 +54,62 @@ interface NoiseMarkersProps {
  * - Filtering support
  * - Loading and empty states
  */
-export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
+export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMarkersProps) {
   const [readings, setReadings] = useState<NoiseReading[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const map = useMap();
 
-  // Cache markers to avoid rebuilding on every render
-  const [cachedMarkers, setCachedMarkers] = useState<{
-    data: NoiseReading[];
-    timestamp: number;
-  } | null>(null);
-
   useEffect(() => {
-    const q = query(collection(db, 'noise_readings'));
+    let isMounted = true;
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => {
-        const readingData = doc.data();
-        // Debug: Log first 3 documents to see structure
-        if (snapshot.docs.indexOf(doc) < 3) {
-          console.log(`Reading ${doc.id}:`, readingData);
-          console.log(`  Has latitude:`, 'latitude' in readingData);
-          console.log(`  Has longitude:`, 'longitude' in readingData);
-          console.log(`  Latitude value:`, readingData.latitude);
-          console.log(`  Longitude value:`, readingData.longitude);
-          console.log(`  Has soundCategory:`, 'soundCategory' in readingData);
-          console.log(`  Has soundClass:`, 'soundClass' in readingData);
-          console.log(`  Decibel level:`, readingData.decibelLevel);
-          console.log('---');
+    async function loadData() {
+      try {
+        // Step 1: Load from IndexedDB cache (instant, 0 Firebase reads)
+        const cachedReadings = await localDb.getAllReadings();
+        
+        if (isMounted) {
+          setReadings(cachedReadings);
+          setIsLoading(false);
+          
+          if (onMarkersLoaded) {
+            onMarkersLoaded(cachedReadings.length);
+          }
+          
+          if (onDataChange && cachedReadings.length > 0) {
+            onDataChange(cachedReadings);
+          }
         }
-        return {
-          id: doc.id,
-          ...readingData,
-        };
-      }) as NoiseReading[];
-      
-      // Cache the data with timestamp
-      setCachedMarkers({
-        data,
-        timestamp: Date.now(),
-      });
-      
-      setReadings(data);
-      setIsLoading(false);
-      
-      if (onMarkersLoaded) {
-        onMarkersLoaded(data.length);
-      }
-    }, (error) => {
-      console.error('Error fetching noise readings:', error);
-      setIsLoading(false);
-    });
 
-    return () => unsubscribe();
-  }, [onMarkersLoaded]);
+        // Step 2: Background sync - fetch only NEW readings since last sync
+        const syncResult = await syncManager.syncNewReadings();
+        
+        if (isMounted && syncResult.newCount > 0) {
+          // Reload all readings from IndexedDB (includes new ones)
+          const updatedReadings = await localDb.getAllReadings();
+          setReadings(updatedReadings);
+          
+          if (onMarkersLoaded) {
+            onMarkersLoaded(updatedReadings.length);
+          }
+          
+          if (onDataChange) {
+            onDataChange(updatedReadings);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading readings:', error);
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [onMarkersLoaded, onDataChange]);
 
   // Apply filters and validate data
   const filteredReadings = readings.filter(reading => {
@@ -175,13 +178,6 @@ export function NoiseMarkers({ filters, onMarkersLoaded }: NoiseMarkersProps) {
     
     return true;
   });
-
-  // Use cached markers if data hasn't changed (performance optimization)
-  const markersToRender = cachedMarkers && 
-    cachedMarkers.data.length === readings.length &&
-    Date.now() - cachedMarkers.timestamp < 5000 // Cache for 5 seconds
-    ? cachedMarkers.data
-    : readings;
 
   // Notify parent of marker count
   useEffect(() => {

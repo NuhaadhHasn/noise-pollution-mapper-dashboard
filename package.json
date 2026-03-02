@@ -17,6 +17,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "firebase": "^12.10.0",
+    "leaflet.heat": "^0.2.0",
     "leaflet.markercluster": "^1.5.3",
     "lucide-react": "^0.575.0",
     "radix-ui": "^1.4.3",

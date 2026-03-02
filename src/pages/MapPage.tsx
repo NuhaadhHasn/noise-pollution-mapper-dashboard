@@ -3,17 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { MapComponent } from '@/components/map/MapContainer';
 import { NoiseMarkers } from '@/components/map/NoiseMarkers';
 import MarkerClusterGroup from '@/components/map/MarkerClusterGroup';
+import { HeatmapLayer } from '@/components/map/HeatmapLayer';
+import { SyncStatus } from '@/components/map/SyncStatus';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MapPin, Search, Crosshair, Filter, ArrowLeft } from 'lucide-react';
+import { MapPin, Search, Crosshair, Filter, ArrowLeft, Layers } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import type { NoiseReading } from '@/types/NoiseReading';
 
 export default function MapPage() {
   const navigate = useNavigate();
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [markerCount, setMarkerCount] = useState(0);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [readingsData, setReadingsData] = useState<NoiseReading[]>([]);
   const { isDarkMode, primaryColor } = useTheme();
 
   return (
@@ -49,6 +54,23 @@ export default function MapPage() {
 
         {/* Controls */}
         <div className="flex gap-1.5 shrink-0">
+          {/* Sync Status */}
+          <SyncStatus onSyncComplete={(result) => {
+            console.log(`Synced ${result.newCount} new readings, total: ${result.totalReadings}`);
+          }} />
+          
+          {/* Heatmap Toggle */}
+          <Button
+            variant={showHeatmap ? "default" : "outline"}
+            size="icon"
+            onClick={() => setShowHeatmap(!showHeatmap)}
+            className="h-8 w-8"
+            title="Toggle heatmap"
+          >
+            <Layers className="h-3.5 w-3.5" />
+          </Button>
+
+          {/* Filters */}
           <Button
             variant="outline"
             size="icon"
@@ -58,6 +80,8 @@ export default function MapPage() {
           >
             <Filter className="h-3.5 w-3.5" />
           </Button>
+
+          {/* Current location */}
           <Button
             variant="outline"
             size="icon"
@@ -113,7 +137,11 @@ export default function MapPage() {
               chunkInterval: 100,  // Faster chunks (was 200ms)
               chunkDelay: 0,  // No delay between chunks (was 50ms)
             }}>
-              <NoiseMarkers onMarkersLoaded={setMarkerCount} />
+              <NoiseMarkers 
+                onMarkersLoaded={setMarkerCount}
+                onDataChange={setReadingsData}
+              />
+              <HeatmapLayer readings={readingsData} visible={showHeatmap} />
             </MarkerClusterGroup>
           </MapComponent>
         </ErrorBoundary>
