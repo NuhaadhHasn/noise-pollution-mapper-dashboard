@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -22,6 +22,17 @@ const SOUND_TYPE_COLORS: Record<string, string> = {
 export function SoundTypeChart() {
   const { isDarkMode } = useTheme();
   const { readings } = useSyncedReadings();
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile based on window width
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Group by sound type
   const soundTypeData = useMemo(() => {
@@ -84,7 +95,8 @@ export function SoundTypeChart() {
               cx="50%"
               cy="50%"
               labelLine={false}
-              label={({ type, percentage }) => `${type}: ${percentage}%`}
+              // Hide labels on mobile, show on desktop
+              label={isMobile ? () => null : ({ type, percentage }) => `${type}: ${percentage}%`}
               outerRadius={80}
               fill="#8884d8"
               dataKey="count"
@@ -124,7 +136,7 @@ export function SoundTypeChart() {
       </div>
 
       {/* Detailed legend */}
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
         {soundTypeData.map((data) => (
           <div
             key={data.type}
@@ -133,16 +145,16 @@ export function SoundTypeChart() {
               isDarkMode ? "bg-gray-700/50" : "bg-gray-50"
             )}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               <div
-                className="w-3 h-3 rounded"
+                className="w-3 h-3 rounded shrink-0"
                 style={{ backgroundColor: data.color }}
               />
-              <span className={cn("font-medium", isDarkMode ? "text-gray-300" : "text-gray-700")}>
+              <span className={cn("font-medium truncate", isDarkMode ? "text-gray-300" : "text-gray-700")}>
                 {data.type}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <span className={cn("text-xs", isDarkMode ? "text-gray-400" : "text-gray-600")}>
                 {data.count}
               </span>

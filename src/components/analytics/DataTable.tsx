@@ -289,10 +289,10 @@ export function DataTable({ data, userMap }: DataTableProps) {
       </div>
 
       {/* Pagination Controls */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         {/* Rows per page */}
         <div className="flex items-center gap-2">
-          <span className={cn('text-sm', isDarkMode ? 'text-gray-400' : 'text-gray-600')}>
+          <span className={cn('text-sm hidden sm:inline', isDarkMode ? 'text-gray-400' : 'text-gray-600')}>
             Rows per page:
           </span>
           <select
@@ -316,18 +316,19 @@ export function DataTable({ data, userMap }: DataTableProps) {
         </div>
 
         {/* Showing X of Y */}
-        <div className={cn('text-sm', isDarkMode ? 'text-gray-400' : 'text-gray-600')}>
-          Showing {startIndex} to {endIndex} of {data.length} readings
+        <div className={cn('text-sm text-center sm:text-left', isDarkMode ? 'text-gray-400' : 'text-gray-600')}>
+          Showing {startIndex} to {endIndex} of {data.length}
         </div>
 
         {/* Page navigation */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-end">
           <Button
             variant="outline"
             size="sm"
             onClick={() => setCurrentPage(1)}
             disabled={currentPage === 1}
             className="px-2"
+            title="First page"
           >
             <ChevronsLeft className="w-4 h-4" />
           </Button>
@@ -336,17 +337,19 @@ export function DataTable({ data, userMap }: DataTableProps) {
             size="sm"
             onClick={() => setCurrentPage(currentPage - 1)}
             disabled={currentPage === 1}
+            className="text-xs sm:text-sm"
           >
             Previous
           </Button>
           <span className={cn('text-sm px-2', isDarkMode ? 'text-gray-400' : 'text-gray-600')}>
-            Page {currentPage} of {totalPages}
+            {currentPage}/{totalPages}
           </span>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setCurrentPage(currentPage + 1)}
             disabled={currentPage === totalPages}
+            className="text-xs sm:text-sm"
           >
             Next
           </Button>
@@ -356,6 +359,7 @@ export function DataTable({ data, userMap }: DataTableProps) {
             onClick={() => setCurrentPage(totalPages)}
             disabled={currentPage === totalPages}
             className="px-2"
+            title="Last page"
           >
             <ChevronsRight className="w-4 h-4" />
           </Button>

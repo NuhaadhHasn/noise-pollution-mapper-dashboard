@@ -50,42 +50,48 @@ export default function MapPage() {
 
   return (
     <div className="relative w-full overflow-hidden bg-gray-200 dark:bg-gray-900" style={{ height: 'calc(100vh - 7rem)' }}>
-      {/* Top Bar - Right aligned */}
+      {/* Top Bar - Responsive */}
       <div
-        className={`absolute top-4 right-4 z-[400] flex items-center gap-3 h-12 ${
+        className={`absolute top-4 right-4 z-[300] flex flex-col sm:flex-row items-center gap-2 sm:gap-3 h-auto sm:h-12 ${
           isDarkMode ? 'bg-[#2D2640]/95' : 'bg-white/95'
-        } backdrop-blur-sm rounded-lg shadow-lg px-4`}
-        style={{ width: 'fit-content', maxWidth: 'calc(100vw - 2rem)' }}
+        } backdrop-blur-sm rounded-lg shadow-lg px-2 sm:px-4 py-2 sm:py-4 transition-all duration-300`}
+        style={{ 
+          width: 'fit-content',
+          maxWidth: 'calc(100vw - 2rem)',
+          minWidth: '280px'
+        }}
       >
-        {/* Back Button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate('/dashboard')}
-          className="shrink-0 h-8 w-8"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+        {/* Top Row: Back Button + Search */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {/* Back Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate('/dashboard')}
+            className="shrink-0 h-8 w-8"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
 
-        {/* Search - Fixed width */}
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-8 text-sm"
-            style={{ width: '200px' }}
-          />
+          {/* Search - Full width on mobile */}
+          <div className="relative flex-1 sm:flex-none min-w-[120px] sm:min-w-0">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 h-8 text-sm w-full sm:w-[180px]"
+            />
+          </div>
         </div>
 
-        {/* Controls */}
-        <div className="flex gap-1.5 shrink-0">
+        {/* Controls - Right aligned */}
+        <div className="flex gap-1.5 shrink-0 border-t sm:border-t-0 sm:border-l border-gray-200 dark:border-gray-700 pt-2 sm:pt-0 sm:pl-3">
           {/* Sync Status */}
           <SyncStatus onSyncComplete={(result) => {
             console.log(`Synced ${result.newCount} new readings, total: ${result.totalReadings}`);
           }} />
-          
+
           {/* Heatmap Toggle */}
           <Button
             variant={showHeatmap ? "default" : "outline"}

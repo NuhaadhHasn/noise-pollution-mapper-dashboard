@@ -32,16 +32,16 @@ export default function AnalyticsPage() {
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
       <header className="mb-4 sm:mb-6">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
+          <div className="flex-1">
             <h2 className={cn(
               'text-xl sm:text-2xl font-bold transition-colors',
               isDarkMode ? 'text-white' : 'text-gray-900'
             )}>
-              📈 Analytics Dashboard
+              📈 Analytics
             </h2>
             <p className={cn(
-              'text-sm sm:text-base transition-colors',
+              'text-xs sm:text-sm transition-colors mt-1',
               isDarkMode ? 'text-gray-400' : 'text-gray-600'
             )}>
               Comprehensive noise pollution analysis for Sri Lanka
@@ -50,10 +50,11 @@ export default function AnalyticsPage() {
           <Button
             variant="outline"
             onClick={() => navigate('/dashboard')}
-            className="text-xs sm:text-sm"
+            className="w-full sm:w-auto text-xs sm:text-sm justify-start sm:justify-center"
           >
-            <MapPin className="w-3 h-3 mr-1" />
-            Back to Dashboard
+            <MapPin className="w-3 h-3 sm:mr-1" />
+            <span className="hidden sm:inline">Back to Dashboard</span>
+            <span className="sm:hidden">Back</span>
           </Button>
         </div>
       </header>
@@ -106,42 +107,44 @@ export default function AnalyticsPage() {
 
         {/* Export Buttons */}
         <div className="mt-6 data-export-section">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <h3 className={cn(
               'text-base sm:text-lg font-semibold transition-colors',
               isDarkMode ? 'text-white' : 'text-gray-900'
             )}>
               📊 Data Export
             </h3>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => exportToCSV(readings, userMap, 'noise_readings')}
                 disabled={readings.length === 0}
-                className="text-xs sm:text-sm"
+                className="text-xs sm:text-sm flex-1 sm:flex-none min-w-[120px]"
               >
-                <Download className="w-3 h-3 mr-1" />
-                Export CSV
+                <Download className="w-3 h-3 sm:mr-1" />
+                <span className="hidden sm:inline">Export CSV</span>
+                <span className="sm:hidden">CSV</span>
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => exportToJSON(readings, 'noise_readings')}
                 disabled={readings.length === 0}
-                className="text-xs sm:text-sm"
+                className="text-xs sm:text-sm flex-1 sm:flex-none min-w-[120px]"
               >
-                <FileJson className="w-3 h-3 mr-1" />
-                Export JSON
+                <FileJson className="w-3 h-3 sm:mr-1" />
+                <span className="hidden sm:inline">Export JSON</span>
+                <span className="sm:hidden">JSON</span>
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => window.print()}
-                className="text-xs sm:text-sm"
+                className="text-xs sm:text-sm flex-1 sm:flex-none min-w-[100px] w-full sm:w-auto"
               >
-                <Printer className="w-3 h-3 mr-1" />
-                Print
+                <Printer className="w-3 h-3" />
+                <span className="ml-1">Print</span>
               </Button>
             </div>
           </div>

@@ -203,7 +203,7 @@ export function CategoryChart() {
       </div>
 
       {/* Legend with count */}
-      <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {categoryData.map((data) => (
           <div
             key={data.category}
@@ -213,13 +213,13 @@ export function CategoryChart() {
             )}
           >
             <div
-              className="w-3 h-3 rounded"
+              className="w-3 h-3 rounded shrink-0"
               style={{ backgroundColor: data.color }}
             />
-            <span className={cn("font-medium", isDarkMode ? "text-gray-300" : "text-gray-700")}>
+            <span className={cn("font-medium truncate flex-1", isDarkMode ? "text-gray-300" : "text-gray-700")}>
               {data.category}
             </span>
-            <span className={cn("text-xs", isDarkMode ? "text-gray-500" : "text-gray-500")}>
+            <span className={cn("text-xs shrink-0", isDarkMode ? "text-gray-500" : "text-gray-500")}>
               ({data.count})
             </span>
           </div>

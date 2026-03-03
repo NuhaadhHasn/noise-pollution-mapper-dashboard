@@ -169,17 +169,17 @@ export function NoiseTrendChart() {
       "p-4 sm:p-6 rounded-lg shadow-lg transition-colors",
       isDarkMode ? "bg-[#322E4A]" : "bg-white"
     )}>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <h3 className={cn("text-base sm:text-lg font-semibold", isDarkMode ? "text-white" : "text-gray-900")}>
-          📈 Noise Trend ({granularity.charAt(0).toUpperCase() + granularity.slice(1)})
+          📈 Noise Trend
         </h3>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-1.5 sm:gap-2">
           {(['hour', 'day', 'week', 'month'] as TimeGranularity[]).map((g) => (
             <Button
               key={g}
               size="sm"
               variant={granularity === g ? 'default' : 'outline'}
-              className="text-xs"
+              className="text-xs px-2 sm:px-3 py-1 h-8"
               onClick={() => setGranularity(g)}
             >
               {g.charAt(0).toUpperCase() + g.slice(1)}

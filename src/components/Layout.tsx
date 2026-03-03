@@ -52,7 +52,7 @@ export default function Layout({ children }: LayoutProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed lg:static inset-y-0 left-0 z-50 flex flex-col border-r transition-all duration-300 overflow-hidden',
+          'fixed lg:static inset-y-0 left-0 z-[500] flex flex-col border-r transition-all duration-300 overflow-hidden',
           isSidebarOpen ? 'w-64' : 'w-0',
           isDarkMode ? 'bg-[#2D2640] border-gray-700' : 'bg-white border-gray-200'
         )}
