@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '@/config/firebase';
-import type { NoiseReading } from '@/types/NoiseReading';
+import { useMemo } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
+import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 
 interface CategoryData {
   category: string;
@@ -66,29 +64,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 export function CategoryChart() {
   const { isDarkMode } = useTheme();
-  const [readings, setReadings] = useState<NoiseReading[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Fetch readings from Firebase
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, 'noise_readings'),
-      (snapshot) => {
-        const data = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as NoiseReading[];
-        setReadings(data);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error fetching readings:', error);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
+  const { readings } = useSyncedReadings();
 
   // Group by category and calculate average dB
   const categoryData = useMemo(() => {
@@ -120,20 +96,6 @@ export function CategoryChart() {
 
     return result;
   }, [readings]);
-
-  if (loading) {
-    return (
-      <div className={cn(
-        "p-4 sm:p-6 rounded-lg shadow-lg transition-colors",
-        isDarkMode ? "bg-[#322E4A]" : "bg-white"
-      )}>
-        <h3 className={cn("text-base sm:text-lg font-semibold mb-4", isDarkMode ? "text-white" : "text-gray-900")}>
-          📊 By Category
-        </h3>
-        <div className={cn("h-64 sm:h-80 rounded", isDarkMode ? "bg-gray-700" : "bg-gray-100")} />
-      </div>
-    );
-  }
 
   if (categoryData.length === 0) {
     return (

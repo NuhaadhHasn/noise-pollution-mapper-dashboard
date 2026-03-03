@@ -4,36 +4,23 @@ import { MapPin, ExternalLink, Download, FileJson, Printer } from 'lucide-react'
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '@/config/firebase';
 import { StatsCards } from '@/components/analytics/StatsCards';
 import { NoiseTrendChart } from '@/components/analytics/NoiseTrendChart';
 import { CategoryChart } from '@/components/analytics/CategoryChart';
 import { SoundTypeChart } from '@/components/analytics/SoundTypeChart';
 import { DataTable } from '@/components/analytics/DataTable';
 import { exportToCSV, exportToJSON } from '@/utils/exportHelpers';
-import type { NoiseReading } from '@/types/NoiseReading';
 import { fetchAllUsers, type UserInfo } from '@/services/userService';
+import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 
 export default function AnalyticsPage() {
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
-  const [markerCount, setMarkerCount] = useState(0);
-  const [readings, setReadings] = useState<NoiseReading[]>([]);
   const [userMap, setUserMap] = useState<Map<string, UserInfo>>(new Map());
 
-  // Fetch data from Firebase
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'noise_readings'), (snapshot) => {
-      setMarkerCount(snapshot.size);
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as NoiseReading[];
-      setReadings(data);
-    });
-    return () => unsubscribe();
-  }, []);
+  // Use IndexedDB-synced readings (0 Firebase reads on initial load)
+  const { readings } = useSyncedReadings();
+  const markerCount = readings.length;
 
   // Fetch users for email lookup
   useEffect(() => {

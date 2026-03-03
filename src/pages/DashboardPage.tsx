@@ -15,16 +15,25 @@ import { StatsCards } from '@/components/analytics/StatsCards';
 import { NoiseTrendChart } from '@/components/analytics/NoiseTrendChart';
 import { CategoryChart } from '@/components/analytics/CategoryChart';
 import { SoundTypeChart } from '@/components/analytics/SoundTypeChart';
+import { StatsCardsSkeleton } from '@/components/analytics/StatsCardsSkeleton';
+import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
+import { MapSkeleton } from '@/components/map/MapSkeleton';
+import { EmptyState } from '@/components/EmptyState';
+import { EmptyStateActions } from '@/components/EmptyStateActions';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { isDarkMode, getCardColor } = useTheme();
   const [markerCount, setMarkerCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasData, setHasData] = useState(false);
 
   // Fetch marker count from Firebase
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'noise_readings'), (snapshot) => {
       setMarkerCount(snapshot.size);
+      setHasData(snapshot.size > 0);
+      setIsLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -47,7 +56,20 @@ export default function DashboardPage() {
       </header>
 
       {/* Stats Cards with Real Data */}
-      <StatsCards />
+      {isLoading ? (
+        <StatsCardsSkeleton />
+      ) : hasData ? (
+        <StatsCards />
+      ) : (
+        <EmptyState
+          variant="no-data"
+          title="No Data Available"
+          description="Start recording noise levels with the mobile app to see data here."
+          action={
+            <EmptyStateActions.ViewAnalytics onClick={() => navigate('/analytics')} />
+          }
+        />
+      )}
 
       {/* Map Section - ACTUAL MAP INTEGRATION */}
       <div className="mt-4 sm:mt-6">
@@ -85,52 +107,74 @@ export default function DashboardPage() {
           }}
         >
           <div className="h-64 sm:h-72 lg:h-80 w-full overflow-hidden">
-            <ErrorBoundary fallback={
-              <div 
-                className="h-full w-full flex items-center justify-center"
-                style={{
-                  background: isDarkMode 
-                    ? 'linear-gradient(135deg, #1e1932 0%, #2d2640 100%)'
-                    : 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)'
-                }}
-              >
-                <div className="text-center p-4">
-                  <div className="text-4xl mb-2">🗺️</div>
-                  <p className={cn(
-                    'text-sm sm:text-base font-medium transition-colors',
-                    isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                  )}>
-                    Map failed to load
-                  </p>
-                  <p className={cn(
-                    'text-xs sm:text-sm transition-colors mt-1',
-                    isDarkMode ? 'text-gray-500' : 'text-gray-500'
-                  )}>
-                    Click "View Full Map" to try again
-                  </p>
+            {isLoading ? (
+              <MapSkeleton showHeader={false} showControls={false} />
+            ) : (
+              <ErrorBoundary fallback={
+                <div
+                  className="h-full w-full flex items-center justify-center"
+                  style={{
+                    background: isDarkMode
+                      ? 'linear-gradient(135deg, #1e1932 0%, #2d2640 100%)'
+                      : 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)'
+                  }}
+                >
+                  <div className="text-center p-4">
+                    <div className="text-4xl mb-2">🗺️</div>
+                    <p className={cn(
+                      'text-sm sm:text-base font-medium transition-colors',
+                      isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                    )}>
+                      Map failed to load
+                    </p>
+                    <p className={cn(
+                      'text-xs sm:text-sm transition-colors mt-1',
+                      isDarkMode ? 'text-gray-500' : 'text-gray-500'
+                    )}>
+                      Click "View Full Map" to try again
+                    </p>
+                  </div>
                 </div>
-              </div>
-            }>
-              <MapComponent>
-                <MarkerClusterGroup>
-                  <NoiseMarkers onMarkersLoaded={setMarkerCount} />
-                </MarkerClusterGroup>
-              </MapComponent>
-            </ErrorBoundary>
+              }>
+                <MapComponent>
+                  <MarkerClusterGroup>
+                    <NoiseMarkers onMarkersLoaded={setMarkerCount} />
+                  </MarkerClusterGroup>
+                </MapComponent>
+              </ErrorBoundary>
+            )}
           </div>
         </div>
       </div>
 
       {/* Analytics Section - REAL CHARTS */}
       <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-6">
-        {/* Noise Trend Chart (Full Width) */}
-        <NoiseTrendChart />
+        {isLoading ? (
+          <>
+            <ChartSkeleton />
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
+              <ChartSkeleton showLegend />
+              <ChartSkeleton />
+            </div>
+          </>
+        ) : hasData ? (
+          <>
+            {/* Noise Trend Chart (Full Width) */}
+            <NoiseTrendChart />
 
-        {/* Category and Sound Type Charts (Side by Side) */}
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
-          <CategoryChart />
-          <SoundTypeChart />
-        </div>
+            {/* Category and Sound Type Charts (Side by Side) */}
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
+              <CategoryChart />
+              <SoundTypeChart />
+            </div>
+          </>
+        ) : (
+          <EmptyState
+            variant="no-data"
+            title="No Analytics Data"
+            description="Analytics will appear here once you have recorded noise readings."
+          />
+        )}
       </div>
     </div>
   );

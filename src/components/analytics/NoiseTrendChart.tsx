@@ -1,12 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '@/config/firebase';
-import type { NoiseReading } from '@/types/NoiseReading';
+import { useMemo, useState } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
+import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 
 type TimeGranularity = 'hour' | 'day' | 'week' | 'month';
 
@@ -20,29 +18,39 @@ interface TrendDataPoint {
 export function NoiseTrendChart() {
   const { isDarkMode } = useTheme();
   const [granularity, setGranularity] = useState<TimeGranularity>('day');
-  const [readings, setReadings] = useState<NoiseReading[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { readings } = useSyncedReadings();
 
-  // Fetch readings from Firebase
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, 'noise_readings'),
-      (snapshot) => {
-        const data = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as NoiseReading[];
-        setReadings(data);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error fetching readings:', error);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
+  // Helper function to convert timestamp from Firebase or IndexedDB to Date
+  function toDate(timestamp: unknown): Date {
+    if (!timestamp) return new Date(0);
+    
+    // If it's already a Date
+    if (timestamp instanceof Date) {
+      return timestamp;
+    }
+    
+    // Cast to any for property access checks
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ts = timestamp as any;
+    
+    // If it's a Firebase Timestamp with toDate() method
+    if (typeof ts.toDate === 'function') {
+      return ts.toDate();
+    }
+    
+    // If it's a plain object with seconds (from IndexedDB)
+    if (typeof ts === 'object' && 'seconds' in ts) {
+      return new Date(ts.seconds * 1000);
+    }
+    
+    // If it's a number (milliseconds)
+    if (typeof ts === 'number') {
+      return new Date(ts);
+    }
+    
+    // Fallback
+    return new Date(0);
+  }
 
   // Group readings by time granularity
   const groupedData = useMemo(() => {
@@ -51,7 +59,7 @@ export function NoiseTrendChart() {
     const groups = new Map<string, number[]>();
 
     readings.forEach((reading) => {
-      const timestamp = reading.timestamp.toDate();
+      const timestamp = toDate(reading.timestamp);
       let key: string;
 
       switch (granularity) {
@@ -135,29 +143,6 @@ export function NoiseTrendChart() {
       return timestamp;
     }
   };
-
-  if (loading) {
-    return (
-      <div className={cn(
-        "p-4 sm:p-6 rounded-lg shadow-lg transition-colors",
-        isDarkMode ? "bg-[#322E4A]" : "bg-white"
-      )}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className={cn("text-base sm:text-lg font-semibold", isDarkMode ? "text-white" : "text-gray-900")}>
-            📈 Noise Trend
-          </h3>
-          <div className="flex gap-2">
-            {(['hour', 'day', 'week', 'month'] as TimeGranularity[]).map((g) => (
-              <Button key={g} size="sm" variant="outline" className="text-xs">
-                {g.charAt(0).toUpperCase() + g.slice(1)}
-              </Button>
-            ))}
-          </div>
-        </div>
-        <div className={cn("h-64 sm:h-80 rounded", isDarkMode ? "bg-gray-700" : "bg-gray-100")} />
-      </div>
-    );
-  }
 
   if (groupedData.length === 0) {
     return (

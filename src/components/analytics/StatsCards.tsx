@@ -1,91 +1,34 @@
-import { useEffect, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '@/config/firebase';
-import type { NoiseReading } from '@/types/NoiseReading';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { Database, Volume2, TrendingUp, Users } from 'lucide-react';
-
-interface StatsData {
-  totalReadings: number;
-  avgNoiseLevel: number;
-  maxNoiseLevel: number;
-  activeContributors: number;
-}
+import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 
 export function StatsCards() {
   const { isDarkMode, getCardColor } = useTheme();
-  const [stats, setStats] = useState<StatsData>({
-    totalReadings: 0,
-    avgNoiseLevel: 0,
-    maxNoiseLevel: 0,
-    activeContributors: 0,
-  });
-  const [loading, setLoading] = useState(true);
+  const { readings } = useSyncedReadings();
 
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, 'noise_readings'),
-      (snapshot) => {
-        const readings: NoiseReading[] = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as NoiseReading[];
+  // Calculate statistics from synced readings
+  const totalReadings = readings.length;
+  const decibelLevels = readings.map((r) => r.decibelLevel).filter((db) => db !== undefined);
 
-        // Calculate statistics
-        const totalReadings = readings.length;
-        const decibelLevels = readings.map((r) => r.decibelLevel).filter((db) => db !== undefined);
-        
-        const avgNoiseLevel = decibelLevels.length > 0
-          ? decibelLevels.reduce((sum, db) => sum + db, 0) / decibelLevels.length
-          : 0;
-        
-        const maxNoiseLevel = decibelLevels.length > 0
-          ? Math.max(...decibelLevels)
-          : 0;
+  const avgNoiseLevel = decibelLevels.length > 0
+    ? decibelLevels.reduce((sum, db) => sum + db, 0) / decibelLevels.length
+    : 0;
 
-        // Count unique contributors (userIds)
-        const uniqueUsers = new Set(readings.map((r) => r.userId).filter((id) => id !== undefined));
-        const activeContributors = uniqueUsers.size;
+  const maxNoiseLevel = decibelLevels.length > 0
+    ? Math.max(...decibelLevels)
+    : 0;
 
-        setStats({
-          totalReadings,
-          avgNoiseLevel: Math.round(avgNoiseLevel * 10) / 10,
-          maxNoiseLevel: Math.round(maxNoiseLevel * 10) / 10,
-          activeContributors,
-        });
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error fetching stats:', error);
-        setLoading(false);
-      }
-    );
+  // Count unique contributors (userIds)
+  const uniqueUsers = new Set(readings.map((r) => r.userId).filter((id) => id !== undefined));
+  const activeContributors = uniqueUsers.size;
 
-    return () => unsubscribe();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className={cn(
-              "p-4 sm:p-6 rounded-lg shadow-lg transition-colors",
-              isDarkMode ? "bg-[#322E4A]" : "bg-white"
-            )}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className={cn("h-4 w-24 rounded", isDarkMode ? "bg-gray-700" : "bg-gray-200")} />
-              <div className={cn("h-5 w-5 rounded", isDarkMode ? "bg-gray-700" : "bg-gray-200")} />
-            </div>
-            <div className={cn("h-8 w-16 rounded", isDarkMode ? "bg-gray-700" : "bg-gray-200")} />
-          </div>
-        ))}
-      </div>
-    );
-  }
+  const stats = {
+    totalReadings,
+    avgNoiseLevel: Math.round(avgNoiseLevel * 10) / 10,
+    maxNoiseLevel: Math.round(maxNoiseLevel * 10) / 10,
+    activeContributors,
+  };
 
   return (
     <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">

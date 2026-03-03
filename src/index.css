@@ -1,5 +1,6 @@
 /* stylelint-disable custom-property-pattern */
 /* noinspection CssUnknownTarget, CssInvalidHtmlTagReference */
+/* noinspection CssUnresolvedCustomProperty */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -124,6 +125,79 @@
   body {
     @apply bg-background text-foreground;
     }
+}
+
+/* Shimmer animation for skeleton loaders */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(
+    to right,
+    oklch(0.922 0 0) 0%,
+    oklch(0.97 0 0) 20%,
+    oklch(0.922 0 0) 40%,
+    oklch(0.922 0 0) 100%
+  );
+  background-size: 1000px 100%;
+}
+
+.dark .animate-shimmer {
+  background: linear-gradient(
+    to right,
+    oklch(0.269 0 0) 0%,
+    oklch(0.32 0 0) 20%,
+    oklch(0.269 0 0) 40%,
+    oklch(0.269 0 0) 100%
+  );
+  background-size: 1000px 100%;
+}
+
+/* Mobile-specific improvements */
+@media (max-width: 640px) {
+  /* Ensure touch targets are at least 44px */
+  button,
+  a {
+    min-height: 44px;
+  }
+
+  /* Prevent horizontal scroll */
+  body {
+    overflow-x: hidden;
+  }
+
+  /* Make tables scrollable horizontally */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Improve chart readability on mobile */
+  .recharts-wrapper {
+    font-size: 12px;
+  }
+
+  /* Ensure text is readable */
+  p, span, div {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+}
+
+/* Tablet-specific improvements */
+@media (min-width: 640px) and (max-width: 1024px) {
+  /* Optimize grid layouts for tablet */
+  .grid {
+    gap: 1.5rem;
+  }
 }
 
 /* Print styles - Only print data table */
