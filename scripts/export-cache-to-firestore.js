@@ -10,6 +10,23 @@
 
 import admin from 'firebase-admin';
 import fs from 'fs';
+
+// PRIVACY (audit sec-2): never export a raw userEmail. Mirrors
+// FirebaseService.authorLabel() for addresses; a value with no '@' is
+// already a display name and is passed through unchanged. Stored values were
+// backfilled to masked form on 2026-09-09, so this is normally a no-op; it
+// stays as defence in depth for offline-queue entries written by a
+// pre-masking build of the app.
+function maskAuthor(value) {
+  if (typeof value !== 'string' || !value.includes('@')) {
+    return typeof value === 'string' && value.length > 0 ? value : 'Anonymous';
+  }
+  const parts = value.split('@');
+  const local = parts[0];
+  const prefix = local.length > 3 ? local.slice(0, 3) : local;
+  return prefix + '***@' + parts.slice(1).join('@');
+}
+
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -54,6 +71,7 @@ async function exportCacheToFirestore() {
     const readings = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
+      userEmail: maskAuthor(doc.data().userEmail),
     }));
     
     console.log(`✓ Fetched ${readings.length} readings`);

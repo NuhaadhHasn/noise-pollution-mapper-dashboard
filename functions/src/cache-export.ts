@@ -19,6 +19,44 @@ const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
 /**
+ * PRIVACY (audit sec-2): noise_readings.userEmail must leave Firestore only as
+ * a MASKED author label, never a raw address. The exported cache is served to
+ * every authenticated dashboard user, and an earlier copy of it was committed
+ * to a public git repo, publishing 4 real addresses correlated with precise
+ * location trails for ~6 months.
+ *
+ * The stored values were backfilled to masked form on 2026-09-09, so in the
+ * normal case this is a no-op. It stays as defence in depth because the
+ * offline-sync path can still land a raw address for a queue entry written by
+ * a pre-masking build of the app (documented accepted residual, playbook 4.2).
+ *
+ * Follows FirebaseService.authorLabel() in the Flutter app
+ * (lib/services/firebase_service.dart) for addresses, with one deliberate
+ * difference: a stored value with no "@" is ALREADY a display name (that is
+ * what authorLabel returns when displayName is set), so it is passed through
+ * unchanged rather than collapsed to "Anonymous".
+ */
+function maskAuthor(value: unknown): string {
+  if (typeof value !== "string" || !value.includes("@")) {
+    return typeof value === "string" && value.length > 0 ? value : "Anonymous";
+  }
+  const parts = value.split("@");
+  const local = parts[0];
+  const prefix = local.length > 3 ? local.slice(0, 3) : local;
+  return `${prefix}***@${parts.slice(1).join("@")}`;
+}
+
+/** Shapes one Firestore doc for export, masking the author label. */
+function toExportRow(doc: admin.firestore.QueryDocumentSnapshot) {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    ...data,
+    userEmail: maskAuthor(data.userEmail),
+  };
+}
+
+/**
  * Daily Cache Export
  * Runs every day at 2:00 AM UTC
  */
@@ -38,10 +76,7 @@ export const exportCacheDaily = onSchedule({
     logger.info("📥 Fetching all noise readings from Firestore...");
     const snapshot = await db.collection("noise_readings").get();
     
-    const readings = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const readings = snapshot.docs.map(toExportRow);
 
     logger.info(`✓ Fetched ${readings.length} readings`);
 
@@ -104,10 +139,7 @@ export const exportCacheWeekly = onSchedule({
   try {
     // Same as daily export, but with more logging
     const snapshot = await db.collection("noise_readings").get();
-    const readings = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const readings = snapshot.docs.map(toExportRow);
 
     const cacheData = {
       version: new Date().toISOString().split('T')[0],
