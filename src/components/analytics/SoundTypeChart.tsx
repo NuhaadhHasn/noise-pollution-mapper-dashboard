@@ -3,6 +3,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { describeTypeChart } from '@/lib/chartSummary';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 
 interface SoundTypeData {
@@ -95,7 +96,7 @@ export function SoundTypeChart() {
 
       <div className="h-64 sm:h-80">
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
+          <PieChart role="img" aria-label={describeTypeChart(soundTypeData)}>
             <Pie
               data={soundTypeData}
               cx="50%"

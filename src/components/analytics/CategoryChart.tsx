@@ -3,6 +3,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { describeCategoryChart } from '@/lib/chartSummary';
 import { categoryInfo, categoryOf, UNCLASSIFIED } from '@/lib/categories';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 
@@ -108,7 +109,14 @@ export function CategoryChart() {
 
       <div className="h-64 sm:h-80">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={categoryData} layout="vertical" margin={{ left: 20, right: 30, top: 20, bottom: 60 }}>
+          <BarChart
+            data={categoryData}
+            layout="vertical"
+            margin={{ left: 20, right: 30, top: 20, bottom: 60 }}
+            accessibilityLayer
+            role="img"
+            aria-label={describeCategoryChart(categoryData)}
+          >
             <CartesianGrid 
               strokeDasharray="3 3" 
               stroke={isDarkMode ? '#4A4458' : '#E0E0E0'} 

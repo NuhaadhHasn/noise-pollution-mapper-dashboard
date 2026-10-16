@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { describeTrendChart } from '@/lib/chartSummary';
 import { bucketOf, weekLabel, type TimeGranularity } from '@/lib/trendBuckets';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 import { getReadingDate } from '@/lib/readings';
@@ -141,7 +142,18 @@ export function NoiseTrendChart() {
 
       <div className="h-64 sm:h-80">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={groupedData}>
+          <LineChart
+            data={groupedData}
+            accessibilityLayer
+            role="img"
+            aria-label={describeTrendChart({
+              granularity,
+              levels: readings.map((reading) => reading.decibelLevel),
+              periods: groupedData.length,
+              firstPeriod: formatLabel(groupedData[0].timestamp),
+              lastPeriod: formatLabel(groupedData[groupedData.length - 1].timestamp),
+            })}
+          >
             <CartesianGrid 
               strokeDasharray="3 3" 
               stroke={isDarkMode ? '#4A4458' : '#E0E0E0'} 
@@ -197,6 +209,7 @@ export function NoiseTrendChart() {
               dataKey="maxDb" 
               stroke="#F44336" 
               strokeWidth={2}
+              strokeDasharray="8 4"
               dot={false}
               name="Maximum"
             />
@@ -205,6 +218,7 @@ export function NoiseTrendChart() {
               dataKey="minDb" 
               stroke="#4CAF50" 
               strokeWidth={2}
+              strokeDasharray="2 3"
               dot={false}
               name="Minimum"
             />
