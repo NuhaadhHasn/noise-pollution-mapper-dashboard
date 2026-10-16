@@ -1,18 +1,30 @@
 /**
  * Sync Manager - keeps the IndexedDB readings cache in step with Firestore.
  *
- * Cursor (data-1): the delta sync is keyed on a SERVER-time watermark, the
- * newest `timestamp` actually received from Firestore, never on the browser
- * clock. Each delta re-queries OVERLAP_MS behind the watermark, so a write
- * that became visible late is still fetched. IndexedDB put() is an
- * idempotent upsert, so the overlap only re-writes rows.
+ * Cursors (data-1): the delta sync is keyed on SERVER-time watermarks taken
+ * from the docs actually received from Firestore, never on the browser clock.
+ * A delta runs two queries side by side and merges them by doc id:
+ * - `timestamp >` the newest capture `timestamp` in the cache. `timestamp` is
+ *   the CAPTURE time, so an offline upload arrives back-dated and can fall
+ *   behind this cursor;
+ * - `syncedAt >` the newest `syncedAt` in the cache. Current app builds stamp
+ *   `syncedAt` with serverTimestamp() on every upload (the rules allow no
+ *   other value), so a back-dated upload still lands past this cursor.
+ * The timestamp delta stays because older app builds never write `syncedAt`.
+ * Each delta re-queries OVERLAP_MS behind its watermark, so a write that
+ * became visible late is still fetched. IndexedDB put() is an idempotent
+ * upsert, so the overlap only re-writes rows. The periodic full replace stays
+ * the backstop for everything a delta cannot see (deletes, label rewrites,
+ * back-dated uploads from older builds).
  *
  * Single flight (perf-2): concurrent callers share one in-flight sync.
  *
  * Query shapes (project index rule): the full fetch
- * `orderBy('timestamp', 'desc')` and the delta `where('timestamp', '>', ...)`.
- * Never a greater-or-equal range, and never a query that needs another
- * composite index.
+ * `orderBy('timestamp', 'desc')`, the delta `where('timestamp', '>', ...)`,
+ * and the delta `where('syncedAt', '>', ...)` + `orderBy('syncedAt')`. Each
+ * delta is a single-field range served by the automatic index. Never a
+ * greater-or-equal range, and never a query that needs another composite
+ * index.
  */
 
 import {
@@ -56,6 +68,8 @@ export const RESYNC_ON_VISIBLE_AFTER_MS = 5 * 60_000;
 
 /** sync_metadata key: newest server `timestamp` in the cache (epoch ms). */
 const WATERMARK_KEY = 'maxTimestampMs';
+/** sync_metadata key: newest server `syncedAt` (upload time) in the cache (epoch ms, data-1). */
+const SYNCED_WATERMARK_KEY = 'maxSyncedAtMs';
 /** sync_metadata key: wall-clock time of the last successful sync (epoch ms). Display only. */
 const LAST_SYNC_AT_KEY = 'lastSyncAt';
 /** sync_metadata key: wall-clock time of the last full replace (epoch ms). Missing means one is due. */
@@ -63,12 +77,24 @@ const LAST_FULL_SYNC_AT_KEY = 'lastFullSyncAt';
 /** sync_metadata key: uid of the account the cache was written for (priv-4). */
 const CACHE_OWNER_UID_KEY = 'cacheOwnerUid';
 /** Every sync_metadata key this module writes; clearSyncData() resets them all. */
-const SYNC_METADATA_KEYS = [WATERMARK_KEY, LAST_SYNC_AT_KEY, LAST_FULL_SYNC_AT_KEY, CACHE_OWNER_UID_KEY];
+const SYNC_METADATA_KEYS = [
+  WATERMARK_KEY,
+  SYNCED_WATERMARK_KEY,
+  LAST_SYNC_AT_KEY,
+  LAST_FULL_SYNC_AT_KEY,
+  CACHE_OWNER_UID_KEY,
+];
 
 export interface SyncResult {
-  /** 'full': the whole collection was fetched. 'delta': only `timestamp >` (watermark - OVERLAP_MS). */
+  /**
+   * 'full': the whole collection was fetched. 'delta': only `timestamp >` and
+   * `syncedAt >`, each from its own watermark - OVERLAP_MS.
+   */
   mode: 'full' | 'delta';
-  /** Docs the query returned and that were written to IndexedDB (a delta includes overlap re-writes). */
+  /**
+   * Distinct docs the queries returned and that were written to IndexedDB (a
+   * delta includes overlap re-writes; a doc both deltas return counts once).
+   */
   newCount: number;
   /** Rows in the cache after the sync. */
   totalReadings: number;
@@ -87,19 +113,32 @@ export function getWatermark(): Promise<number | null> {
 }
 
 /**
- * The watermark after storing `readings`: their newest `timestamp`, never
- * lower than `previous` (pass null after a full fetch). Timestamps more than
+ * The upload-time delta cursor (data-1): newest `syncedAt` (epoch ms) in the
+ * cache, or null while no cached doc carries one.
+ */
+export function getSyncedWatermark(): Promise<number | null> {
+  return readNumber(SYNCED_WATERMARK_KEY);
+}
+
+/** A reading field a watermark is taken from. */
+export type WatermarkField = 'timestamp' | 'syncedAt';
+
+/**
+ * The watermark after storing `readings`: their newest `field` (`timestamp`
+ * by default, or `syncedAt`), never lower than `previous` (pass null after a
+ * full fetch). Readings without the field are skipped, and values more than
  * MAX_FUTURE_SKEW_MS ahead of `nowMs` are ignored. Pure, for tests.
  */
 export function nextWatermark(
   readings: NoiseReading[],
   previous: number | null,
   nowMs: number,
+  field: WatermarkField = 'timestamp',
 ): number | null {
   const ceiling = nowMs + MAX_FUTURE_SKEW_MS;
   let watermark = previous;
   for (const reading of readings) {
-    const ts = reading.timestamp;
+    const ts = reading[field];
     if (
       typeof ts === 'number' &&
       Number.isFinite(ts) &&
@@ -139,14 +178,49 @@ function deltaQuery(watermarkMs: number): Query {
 }
 
 /**
+ * The upload-time delta (data-1). Strictly '>' and ordered on the same field:
+ * a single-field range served by the automatic index, no composite index.
+ * With no syncedAt watermark yet, it asks for every stamped doc: none exist
+ * before current app builds upload, and the first fetch that sees one sets
+ * the watermark.
+ */
+function syncedDeltaQuery(syncedWatermarkMs: number | null): Query {
+  const afterMs = syncedWatermarkMs === null ? 0 : syncedWatermarkMs - OVERLAP_MS;
+  return query(
+    collection(firebaseDb, 'noise_readings'),
+    where('syncedAt', '>', Timestamp.fromMillis(afterMs)),
+    orderBy('syncedAt'),
+  );
+}
+
+/**
+ * Merge query results by doc id, so a doc two deltas both return is stored
+ * and counted once. When the copies differ (a write landed between the two
+ * reads), the one with the newer `syncedAt` wins, else the later list's.
+ * Pure, for tests.
+ */
+export function mergeById(...lists: NoiseReading[][]): NoiseReading[] {
+  const byId = new Map<string, NoiseReading>();
+  for (const list of lists) {
+    for (const reading of list) {
+      const kept = byId.get(reading.id);
+      if (kept === undefined || (kept.syncedAt ?? -Infinity) <= (reading.syncedAt ?? -Infinity)) {
+        byId.set(reading.id, reading);
+      }
+    }
+  }
+  return Array.from(byId.values());
+}
+
+/**
  * Run a noise_readings query and normalize every doc into the plain
  * NoiseReading DTO that IndexedDB stores (bug-1, sec-1). A doc no app
  * version writes is dropped here, so it is never cached and never reaches a
  * chart, table, popup or export. Only the count of dropped docs is logged,
  * never their content (convention 2.13).
  *
- * The callers' query shapes are unchanged: the full fetch is
- * orderBy('timestamp', 'desc') and the delta is where('timestamp', '>', ...).
+ * The callers' query shapes: the full fetch orderBy('timestamp', 'desc'), and
+ * the deltas where('timestamp', '>', ...) and where('syncedAt', '>', ...).
  */
 export async function fetchReadings(q: Query): Promise<NoiseReading[]> {
   const snapshot = await getDocs(q);
@@ -204,6 +278,7 @@ async function performSync(forceFull: boolean): Promise<SyncResult> {
   const startedEpoch = cacheEpoch;
   try {
     const watermark = await getWatermark();
+    const syncedWatermark = await getSyncedWatermark();
     const lastFullSyncAt = await readNumber(LAST_FULL_SYNC_AT_KEY);
     // A full replace when forced, when the last one is FULL_REPLACE_INTERVAL_MS
     // old (or missing), or when nothing has been fetched yet (no watermark).
@@ -212,15 +287,26 @@ async function performSync(forceFull: boolean): Promise<SyncResult> {
     const full = deltaFrom === null;
 
     let readings: NoiseReading[];
+    // The docs each watermark is taken from: every doc after a full fetch;
+    // in a delta, only the docs that watermark's own query returned.
+    let byTimestamp: NoiseReading[];
+    let bySyncedAt: NoiseReading[];
     if (deltaFrom === null) {
       // Fetch everything FIRST. The cache is swapped only after the download
       // succeeded, in one IndexedDB transaction (bug-5): a failed fetch leaves
       // the old cache and every cursor untouched.
       readings = await fetchReadings(fullQuery());
+      byTimestamp = readings;
+      bySyncedAt = readings;
       assertCacheEpoch(startedEpoch);
       await localDb.replaceAllReadings(readings);
     } else {
-      readings = await fetchReadings(deltaQuery(deltaFrom));
+      // Both deltas must succeed before anything is stored (data-1).
+      [byTimestamp, bySyncedAt] = await Promise.all([
+        fetchReadings(deltaQuery(deltaFrom)),
+        fetchReadings(syncedDeltaQuery(syncedWatermark)),
+      ]);
+      readings = mergeById(byTimestamp, bySyncedAt);
       assertCacheEpoch(startedEpoch);
       if (readings.length > 0) {
         await localDb.setManyReadings(readings);
@@ -228,12 +314,16 @@ async function performSync(forceFull: boolean): Promise<SyncResult> {
     }
 
     // Cursors are written only after the rows are stored: if anything above
-    // failed, the old watermark stays and the next sync re-reads.
+    // failed, the old watermarks stay and the next sync re-reads.
     assertCacheEpoch(startedEpoch);
     const finishedAt = Date.now();
-    const next = nextWatermark(readings, deltaFrom, finishedAt);
+    const next = nextWatermark(byTimestamp, deltaFrom, finishedAt);
     if (next !== null) {
       await localDb.setSyncMetadata(WATERMARK_KEY, next);
+    }
+    const nextSynced = nextWatermark(bySyncedAt, full ? null : syncedWatermark, finishedAt, 'syncedAt');
+    if (nextSynced !== null) {
+      await localDb.setSyncMetadata(SYNCED_WATERMARK_KEY, nextSynced);
     }
     await localDb.setSyncMetadata(LAST_SYNC_AT_KEY, finishedAt);
     if (full) {

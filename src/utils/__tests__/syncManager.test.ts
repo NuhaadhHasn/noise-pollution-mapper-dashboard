@@ -77,8 +77,12 @@ interface FakeDoc {
   data: () => Record<string, unknown>;
 }
 
-/** A production-shaped noise_readings doc (unclassified, like 79.5% of production). */
-function fakeDoc(id: string, timestampMs: number): FakeDoc {
+/**
+ * A production-shaped noise_readings doc (unclassified, like 79.5% of
+ * production). Pass `syncedAtMs` for a doc a current app build uploaded
+ * (data-1); without it the doc is from an older build, with no syncedAt.
+ */
+function fakeDoc(id: string, timestampMs: number, syncedAtMs?: number): FakeDoc {
   return {
     id,
     data: () => ({
@@ -91,6 +95,7 @@ function fakeDoc(id: string, timestampMs: number): FakeDoc {
       timestamp: Timestamp.fromMillis(timestampMs),
       createdAt: Timestamp.fromMillis(timestampMs),
       deviceInfo: 'Mobile Device',
+      ...(syncedAtMs === undefined ? {} : { syncedAt: Timestamp.fromMillis(syncedAtMs) }),
     }),
   };
 }
@@ -102,6 +107,45 @@ function fakeSnapshot(docs: FakeDoc[]) {
     empty: docs.length === 0,
     forEach: (callback: (doc: FakeDoc) => void) => docs.forEach(callback),
   };
+}
+
+/** The mocked query(): its source and constraints, as the firebase/firestore mock builds them. */
+interface FakeQuery {
+  constraints: Array<{ field: string; op?: string }>;
+}
+
+type QueryRoute = 'full' | 'timestamp' | 'syncedAt';
+
+/** Which of the three sync queries `q` is: the full fetch, or the delta on that field. */
+function routeOf(q: unknown): QueryRoute {
+  const range = (q as FakeQuery).constraints.find((constraint) => constraint.op === '>');
+  if (range === undefined) {
+    return 'full';
+  }
+  if (range.field === 'timestamp' || range.field === 'syncedAt') {
+    return range.field;
+  }
+  throw new Error(`unexpected range query on ${range.field}`);
+}
+
+/**
+ * Serve getDocs by query shape, not call order: a delta runs the timestamp
+ * and syncedAt queries side by side. A route set to an Error rejects; a route
+ * left out returns no docs.
+ */
+function serveQueries(routes: Partial<Record<QueryRoute, FakeDoc[] | Error>>): void {
+  vi.mocked(getDocs).mockImplementation((async (q: unknown) => {
+    const docs = routes[routeOf(q)] ?? [];
+    if (docs instanceof Error) {
+      throw docs;
+    }
+    return fakeSnapshot(docs);
+  }) as never);
+}
+
+/** The where() call on `field`: [field, op, value], or undefined. */
+function whereOn(field: string) {
+  return vi.mocked(where).mock.calls.find(([f]) => f === field);
 }
 
 function deferred<T>() {
@@ -158,16 +202,14 @@ describe('syncNewReadings: server-time watermark (data-1)', () => {
   it("queries timestamp '>' (watermark - OVERLAP_MS) and advances to the newest fetched doc", async () => {
     const watermark = NOW - 60 * MINUTE;
     seedSyncedCache(watermark);
-    vi.mocked(getDocs).mockResolvedValueOnce(
-      fakeSnapshot([fakeDoc('overlap', watermark - 5 * MINUTE), fakeDoc('new', NOW - 2 * MINUTE)]) as never,
-    );
+    serveQueries({
+      timestamp: [fakeDoc('overlap', watermark - 5 * MINUTE), fakeDoc('new', NOW - 2 * MINUTE)],
+    });
 
     const result = await syncManager.syncNewReadings();
 
     expect(result.mode).toBe('delta');
-    expect(where).toHaveBeenCalledTimes(1);
-    const [field, op, value] = vi.mocked(where).mock.calls[0];
-    expect(field).toBe('timestamp');
+    const [, op, value] = whereOn('timestamp') ?? [];
     expect(op).toBe('>');
     expect((value as Timestamp).toMillis()).toBe(watermark - syncManager.OVERLAP_MS);
     expect(fakeDb.meta.get('maxTimestampMs')).toBe(NOW - 2 * MINUTE);
@@ -177,13 +219,12 @@ describe('syncNewReadings: server-time watermark (data-1)', () => {
   it('never moves the watermark backwards on overlap-only or empty deltas', async () => {
     const watermark = NOW - 60 * MINUTE;
     seedSyncedCache(watermark);
-    vi.mocked(getDocs)
-      .mockResolvedValueOnce(fakeSnapshot([fakeDoc('overlap', watermark - 3 * MINUTE)]) as never)
-      .mockResolvedValueOnce(fakeSnapshot([]) as never);
+    serveQueries({ timestamp: [fakeDoc('overlap', watermark - 3 * MINUTE)] });
 
     await syncManager.syncNewReadings();
     expect(fakeDb.meta.get('maxTimestampMs')).toBe(watermark);
 
+    serveQueries({});
     await syncManager.syncNewReadings();
     expect(fakeDb.meta.get('maxTimestampMs')).toBe(watermark);
   });
@@ -203,25 +244,165 @@ describe('syncNewReadings: server-time watermark (data-1)', () => {
   });
 });
 
+describe('syncNewReadings: syncedAt upload-time cursor (data-1)', () => {
+  const DAY = 24 * 60 * MINUTE;
+
+  /** A delta-ready cache: both watermarks set, a recent full replace. */
+  function seedBothWatermarks(timestampMs: number, syncedAtMs: number): void {
+    seedSyncedCache(timestampMs);
+    fakeDb.meta.set('maxSyncedAtMs', syncedAtMs);
+  }
+
+  it("finds a back-dated offline upload through syncedAt '>' that the timestamp delta misses", async () => {
+    const watermark = NOW - 60 * MINUTE;
+    seedBothWatermarks(watermark, watermark);
+    // Captured offline three days ago, uploaded two minutes ago: its capture
+    // timestamp is far behind the timestamp delta, so only syncedAt finds it.
+    serveQueries({ syncedAt: [fakeDoc('offline', NOW - 3 * DAY, NOW - 2 * MINUTE)] });
+
+    const result = await syncManager.syncNewReadings();
+
+    expect(result.mode).toBe('delta');
+    const [, op, value] = whereOn('syncedAt') ?? [];
+    expect(op).toBe('>');
+    expect((value as Timestamp).toMillis()).toBe(watermark - syncManager.OVERLAP_MS);
+    // A range plus orderBy on the same field: the automatic index, no composite index.
+    expect(orderBy).toHaveBeenCalledWith('syncedAt');
+    expect(orderBy).not.toHaveBeenCalledWith('timestamp', 'desc');
+    expect(fakeDb.rows.get('offline')).toMatchObject({ timestamp: NOW - 3 * DAY, syncedAt: NOW - 2 * MINUTE });
+    expect(result.newCount).toBe(1);
+    // The back-dated capture time never drags the timestamp watermark back.
+    expect(fakeDb.meta.get('maxTimestampMs')).toBe(watermark);
+    expect(fakeDb.meta.get('maxSyncedAtMs')).toBe(NOW - 2 * MINUTE);
+  });
+
+  it('stores and counts a doc both deltas return once', async () => {
+    seedBothWatermarks(NOW - 60 * MINUTE, NOW - 60 * MINUTE);
+    const both = fakeDoc('both', NOW - 2 * MINUTE, NOW - 2 * MINUTE);
+    serveQueries({
+      timestamp: [both, fakeDoc('older-build', NOW - 3 * MINUTE)],
+      syncedAt: [fakeDoc('back-dated', NOW - DAY, NOW - 4 * MINUTE), both],
+    });
+
+    const result = await syncManager.syncNewReadings();
+
+    expect(localDb.setManyReadings).toHaveBeenCalledTimes(1);
+    const stored = vi.mocked(localDb.setManyReadings).mock.calls[0][0];
+    expect(stored.map((reading) => reading.id).sort()).toEqual(['back-dated', 'both', 'older-build']);
+    expect(result.newCount).toBe(3);
+    expect(fakeDb.rows.size).toBe(3);
+  });
+
+  it('mergeById keeps one copy per id, preferring the newer syncedAt', () => {
+    const reading = (id: string, syncedAt?: number, userEmail = 'old') => ({
+      id,
+      userId: 'user-a',
+      userEmail,
+      decibelLevel: 60,
+      latitude: 6.9,
+      longitude: 79.8,
+      timestamp: NOW,
+      ...(syncedAt === undefined ? {} : { syncedAt }),
+    });
+
+    const merged = syncManager.mergeById(
+      [reading('a', NOW), reading('b'), reading('c', NOW, 'newer list')],
+      [reading('a', NOW - MINUTE, 'stale copy'), reading('b', NOW), reading('c', NOW, 'later list')],
+    );
+
+    expect(merged.map((r) => r.id)).toEqual(['a', 'b', 'c']);
+    expect(merged.find((r) => r.id === 'a')?.userEmail).toBe('old');
+    expect(merged.find((r) => r.id === 'b')?.syncedAt).toBe(NOW);
+    expect(merged.find((r) => r.id === 'c')?.userEmail).toBe('later list');
+  });
+
+  it('persists maxSyncedAtMs from a full fetch and queries from it on the next delta', async () => {
+    serveQueries({
+      full: [
+        fakeDoc('older-build', NOW - 30 * MINUTE),
+        fakeDoc('uploaded', NOW - 2 * DAY, NOW - 20 * MINUTE),
+        fakeDoc('online', NOW - 25 * MINUTE, NOW - 25 * MINUTE),
+      ],
+    });
+
+    await syncManager.syncNewReadings();
+
+    expect(fakeDb.meta.get('maxSyncedAtMs')).toBe(NOW - 20 * MINUTE);
+    expect(fakeDb.meta.get('maxTimestampMs')).toBe(NOW - 25 * MINUTE);
+
+    serveQueries({});
+    await syncManager.syncNewReadings();
+
+    const [, , value] = whereOn('syncedAt') ?? [];
+    expect((value as Timestamp).toMillis()).toBe(NOW - 20 * MINUTE - syncManager.OVERLAP_MS);
+    // An empty delta never moves it backwards.
+    expect(fakeDb.meta.get('maxSyncedAtMs')).toBe(NOW - 20 * MINUTE);
+  });
+
+  it('never moves maxSyncedAtMs backwards on an overlap-only delta', async () => {
+    const syncedWatermark = NOW - 10 * MINUTE;
+    seedBothWatermarks(NOW - 60 * MINUTE, syncedWatermark);
+    serveQueries({ syncedAt: [fakeDoc('overlap', NOW - DAY, syncedWatermark - 5 * MINUTE)] });
+
+    await syncManager.syncNewReadings();
+
+    expect(fakeDb.rows.has('overlap')).toBe(true);
+    expect(fakeDb.meta.get('maxSyncedAtMs')).toBe(syncedWatermark);
+  });
+
+  it('with no syncedAt watermark yet, asks for every stamped doc', async () => {
+    // A cache built before data-1, or one where no doc carries syncedAt yet.
+    seedSyncedCache(NOW - 60 * MINUTE);
+    serveQueries({});
+
+    await syncManager.syncNewReadings();
+
+    const [, op, value] = whereOn('syncedAt') ?? [];
+    expect(op).toBe('>');
+    expect((value as Timestamp).toMillis()).toBe(0);
+    expect(fakeDb.meta.has('maxSyncedAtMs')).toBe(false);
+  });
+
+  it('a failed syncedAt query stores nothing and keeps every cursor', async () => {
+    seedBothWatermarks(NOW - 60 * MINUTE, NOW - 60 * MINUTE);
+    const metaBefore = new Map(fakeDb.meta);
+    serveQueries({ timestamp: [fakeDoc('new', NOW - MINUTE)], syncedAt: new Error('unavailable') });
+
+    await expect(syncManager.syncNewReadings()).rejects.toThrow('unavailable');
+
+    expect(fakeDb.rows.size).toBe(0);
+    expect(fakeDb.meta).toEqual(metaBefore);
+  });
+
+  it('clearing the cache resets maxSyncedAtMs too', async () => {
+    seedBothWatermarks(NOW - 60 * MINUTE, NOW - 60 * MINUTE);
+
+    await syncManager.clearSyncData();
+
+    expect(fakeDb.meta.get('maxSyncedAtMs')).toBeNull();
+  });
+});
+
 describe('syncNewReadings: single flight (perf-2)', () => {
-  it('shares one getDocs between concurrent callers', async () => {
+  it('shares one sync between concurrent callers: one query each, not one per caller', async () => {
     seedSyncedCache(NOW - 60 * MINUTE);
     const pending = deferred<ReturnType<typeof fakeSnapshot>>();
-    vi.mocked(getDocs).mockReturnValueOnce(pending.promise as never);
+    vi.mocked(getDocs).mockReturnValue(pending.promise as never);
 
     const first = syncManager.syncNewReadings();
     const second = syncManager.syncNewReadings();
     expect(second).toBe(first);
 
-    await vi.waitFor(() => expect(getDocs).toHaveBeenCalledTimes(1));
-    pending.resolve(fakeSnapshot([fakeDoc('n', NOW - MINUTE)]));
+    // The delta's two queries (timestamp and syncedAt), once.
+    await vi.waitFor(() => expect(getDocs).toHaveBeenCalledTimes(2));
+    pending.resolve(fakeSnapshot([fakeDoc('n', NOW - MINUTE, NOW - MINUTE)]));
     await Promise.all([first, second]);
-    expect(getDocs).toHaveBeenCalledTimes(1);
+    expect(getDocs).toHaveBeenCalledTimes(2);
 
     // Once settled, the next call starts a new sync.
-    vi.mocked(getDocs).mockResolvedValueOnce(fakeSnapshot([]) as never);
+    serveQueries({});
     await syncManager.syncNewReadings();
-    expect(getDocs).toHaveBeenCalledTimes(2);
+    expect(getDocs).toHaveBeenCalledTimes(4);
   });
 });
 
@@ -253,7 +434,7 @@ describe('periodic full replace (priv-1, bug-5)', () => {
 
   it('runs a delta, not a replace, while the last full replace is recent', async () => {
     seedSyncedCache(NOW - 60 * MINUTE);
-    vi.mocked(getDocs).mockResolvedValueOnce(fakeSnapshot([]) as never);
+    serveQueries({});
 
     const result = await syncManager.syncNewReadings();
 
