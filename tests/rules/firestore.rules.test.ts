@@ -19,6 +19,12 @@
  * payload differs from an ALLOWED baseline in exactly the field under test,
  * so a denial can only come from that field.
  *
+ * The base fixtures below are the payloads of app builds from before data-1,
+ * which never send `syncedAt` and stay in the field. Current builds add
+ * `syncedAt: serverTimestamp()` to the online save, the offline upload and
+ * the history restore; the data-1 blocks at the end cover those payloads and
+ * the forged-syncedAt attacks.
+ *
  * The rules are deployed: if a case here fails, report it. Do NOT edit
  * firestore.rules to make the suite pass; a rules change needs the owner's
  * approval, a mirror to the app repo and a redeploy.
@@ -613,6 +619,194 @@ describe('DENY users: cross-user access and role escalation', () => {
     await assertFails(
       setDoc(doc(as(BOB), 'users', ALICE), { displayName: 'pwned' }, { merge: true }),
     )
+  })
+})
+
+// =============================================================================
+// syncedAt (data-1): the server upload time, the dashboard's second delta cursor
+// =============================================================================
+
+// What a current app build sends: the same payload plus
+// `syncedAt: FieldValue.serverTimestamp()` (APP FirebaseService.withSyncedAt).
+const stamped = (data: DocumentData): DocumentData => ({ ...data, syncedAt: serverTimestamp() })
+
+function millis(value: unknown): number {
+  return (value as Timestamp).toMillis()
+}
+
+describe('ALLOW noise_readings: syncedAt = serverTimestamp() (data-1)', () => {
+  it('online capture: add() with all 13 keys, syncedAt a serverTimestamp()', async () => {
+    const ref = await assertSucceeds(
+      addDoc(collection(as(ALICE), READINGS), stamped(onlineCapture(ALICE))),
+    )
+    const stored = await readRaw(ref.path)
+    expect(Object.keys(stored ?? {})).toHaveLength(13)
+    expect(millis(stored?.syncedAt)).toBe(millis(stored?.timestamp))
+  })
+
+  it('offline-sync first write: capture time 3 days old, userEmail null, syncedAt the upload time', async () => {
+    const capturedAt = new Date(Date.now() - 3 * DAY_MS)
+    const ref = doc(as(ALICE), READINGS, offlineId(ALICE, capturedAt))
+    await assertSucceeds(setDoc(ref, stamped(offlineUpload(ALICE, capturedAt))))
+    const stored = await readRaw(ref.path)
+    expect(stored?.userEmail).toBeNull()
+    // The point of data-1: the upload time is days after the capture time.
+    expect(millis(stored?.syncedAt) - millis(stored?.timestamp)).toBeGreaterThan(2 * DAY_MS)
+  })
+
+  it('offline-sync retry of the same doc id (an UPDATE) re-stamps syncedAt', async () => {
+    const capturedAt = new Date(Date.now() - 6 * HOUR_MS)
+    const ref = doc(as(ALICE), READINGS, offlineId(ALICE, capturedAt))
+    const data = stamped(offlineUpload(ALICE, capturedAt))
+    await assertSucceeds(setDoc(ref, data))
+    // Lost ack: the queue re-sends the same set(), with a fresh serverTimestamp().
+    await assertSucceeds(setDoc(ref, data))
+  })
+
+  it('offline-sync retry after the label was propagated (writes null back over it)', async () => {
+    const capturedAt = new Date(Date.now() - 6 * HOUR_MS)
+    const alice = as(ALICE)
+    const ref = doc(alice, READINGS, offlineId(ALICE, capturedAt))
+    const data = stamped(offlineUpload(ALICE, capturedAt))
+    await assertSucceeds(setDoc(ref, data))
+    await assertSucceeds(updateDoc(ref, { userEmail: 'Alice' }))
+    await assertSucceeds(setDoc(ref, data))
+  })
+
+  it('history undo: restore overrides the original syncedAt with serverTimestamp() (a create)', async () => {
+    const alice = as(ALICE)
+    const ref = await assertSucceeds(
+      addDoc(collection(alice, READINGS), stamped(onlineCapture(ALICE))),
+    )
+    const original = (await getDoc(ref)).data() as DocumentData
+    expect(original.syncedAt).toBeDefined()
+    await assertSucceeds(deleteDoc(ref))
+    await assertSucceeds(setDoc(ref, { ...original, syncedAt: serverTimestamp() }))
+  })
+
+  it('history undo of a pre-data-1 reading: restore adds syncedAt (a create)', async () => {
+    const alice = as(ALICE)
+    const ref = await assertSucceeds(addDoc(collection(alice, READINGS), onlineCapture(ALICE)))
+    const original = (await getDoc(ref)).data() as DocumentData
+    expect('syncedAt' in original).toBe(false)
+    await assertSucceeds(deleteDoc(ref))
+    await assertSucceeds(setDoc(ref, stamped(original)))
+  })
+
+  it('email propagation and anonymization leave a stored syncedAt untouched', async () => {
+    await seed(`${READINGS}/r1`, stamped(storedReading(ALICE)))
+    const before = await readRaw(`${READINGS}/r1`)
+    const alice = as(ALICE)
+    // Neither path runs validReading(), so a syncedAt that no longer equals
+    // request.time does not block them.
+    await assertSucceeds(updateDoc(doc(alice, READINGS, 'r1'), { userEmail: 'ali***@example.com' }))
+    const batch = writeBatch(alice)
+    batch.update(doc(alice, READINGS, 'r1'), {
+      userEmail: 'Deleted User',
+      userId: anonymizedId(ALICE),
+    })
+    await assertSucceeds(batch.commit())
+    const after = await readRaw(`${READINGS}/r1`)
+    expect(millis(after?.syncedAt)).toBe(millis(before?.syncedAt))
+  })
+
+  it('a legacy doc with no syncedAt stays updatable by the author-label and anonymization paths', async () => {
+    await seed(`${READINGS}/legacy`, legacyReading(ALICE))
+    await seed(`${READINGS}/old`, storedReading(ALICE))
+    const alice = as(ALICE)
+    const label = writeBatch(alice)
+    label.update(doc(alice, READINGS, 'legacy'), { userEmail: 'Alice' })
+    label.update(doc(alice, READINGS, 'old'), { userEmail: 'Alice' })
+    await assertSucceeds(label.commit())
+    const anonymize = writeBatch(alice)
+    for (const id of ['legacy', 'old']) {
+      anonymize.update(doc(alice, READINGS, id), {
+        userEmail: 'Deleted User',
+        userId: anonymizedId(ALICE),
+      })
+    }
+    await assertSucceeds(anonymize.commit())
+    for (const id of ['legacy', 'old']) {
+      expect('syncedAt' in ((await readRaw(`${READINGS}/${id}`)) ?? {})).toBe(false)
+    }
+  })
+
+  it("the dashboard's syncedAt delta finds a back-dated upload the timestamp delta misses", async () => {
+    const capturedAt = new Date(Date.now() - 3 * DAY_MS)
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), READINGS, offlineId(ALICE, capturedAt)),
+        stamped(offlineUpload(ALICE, capturedAt)),
+      ),
+    )
+    const bob = as(BOB)
+    const since = Timestamp.fromMillis(Date.now() - HOUR_MS)
+    const bySyncedAt = await assertSucceeds(
+      getDocs(query(collection(bob, READINGS), where('syncedAt', '>', since), orderBy('syncedAt'))),
+    )
+    const byTimestamp = await assertSucceeds(
+      getDocs(query(collection(bob, READINGS), where('timestamp', '>', since))),
+    )
+    expect(bySyncedAt.size).toBe(1)
+    expect(byTimestamp.size).toBe(0)
+  })
+})
+
+describe('DENY noise_readings: a client-supplied syncedAt (data-1)', () => {
+  const createAs = (uid: string, data: DocumentData) =>
+    addDoc(collection(as(uid), READINGS), data)
+
+  it.each([
+    { name: 'one minute ago', offsetMs: -60_000 },
+    { name: 'three days ago', offsetMs: -3 * DAY_MS },
+    { name: 'one minute ahead', offsetMs: 60_000 },
+    { name: 'one day ahead', offsetMs: DAY_MS },
+  ])('an explicit Timestamp $name on an online create', async ({ offsetMs }) => {
+    const syncedAt = Timestamp.fromMillis(Date.now() + offsetMs)
+    await assertFails(createAs(ALICE, { ...onlineCapture(ALICE), syncedAt }))
+  })
+
+  it('an offline upload stamped with its own capture time', async () => {
+    const capturedAt = new Date(Date.now() - 3 * DAY_MS)
+    const ref = doc(as(ALICE), READINGS, offlineId(ALICE, capturedAt))
+    const data = { ...offlineUpload(ALICE, capturedAt), syncedAt: Timestamp.fromDate(capturedAt) }
+    await assertFails(setDoc(ref, data))
+  })
+
+  it('an offline-sync retry (an UPDATE) with an explicit Timestamp', async () => {
+    const capturedAt = new Date(Date.now() - 6 * HOUR_MS)
+    const ref = doc(as(ALICE), READINGS, offlineId(ALICE, capturedAt))
+    const data = stamped(offlineUpload(ALICE, capturedAt))
+    await assertSucceeds(setDoc(ref, data))
+    await assertFails(setDoc(ref, { ...data, syncedAt: Timestamp.fromMillis(Date.now() - 60_000) }))
+  })
+
+  it('a restore that re-sends the original syncedAt', async () => {
+    const alice = as(ALICE)
+    const ref = await assertSucceeds(
+      addDoc(collection(alice, READINGS), stamped(onlineCapture(ALICE))),
+    )
+    const original = (await getDoc(ref)).data() as DocumentData
+    await assertSucceeds(deleteDoc(ref))
+    await assertFails(setDoc(ref, original))
+  })
+
+  it('an owner update that changes a field but keeps the stored syncedAt', async () => {
+    await seed(`${READINGS}/r1`, stamped(storedReading(ALICE)))
+    const ref = doc(as(ALICE), READINGS, 'r1')
+    await assertFails(updateDoc(ref, { decibelLevel: 70 }))
+    // Control: the same update re-stamping syncedAt passes validReading().
+    await assertSucceeds(updateDoc(ref, { decibelLevel: 70, syncedAt: serverTimestamp() }))
+  })
+
+  it.each([
+    { name: 'an ISO string', syncedAt: '2026-10-16T00:00:00Z' },
+    { name: 'epoch milliseconds', syncedAt: 1_760_572_800_000 },
+    { name: 'a { seconds, nanoseconds } map', syncedAt: { seconds: 1_760_572_800, nanoseconds: 0 } },
+    { name: 'null', syncedAt: null },
+    { name: 'a boolean', syncedAt: true },
+  ])('a syncedAt of the wrong type: $name', async ({ syncedAt }) => {
+    await assertFails(createAs(ALICE, { ...onlineCapture(ALICE), syncedAt }))
   })
 })
 
