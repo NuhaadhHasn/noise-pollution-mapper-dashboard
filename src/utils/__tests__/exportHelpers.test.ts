@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NoiseReading } from '@/types/NoiseReading';
 import { DB_CAVEAT } from '@/lib/noiseBands';
-import { buildCsv, buildJsonExport, csvCell, csvFixed } from '@/utils/exportHelpers';
+import { buildCsv, buildJsonExport, csvCell, csvFixed, isoUtc } from '@/utils/exportHelpers';
 
 const HEADERS = [
   'Timestamp',
@@ -13,6 +13,7 @@ const HEADERS = [
   'Type',
   'Confidence (%)',
   'Contributor',
+  'Timestamp (UTC, ISO 8601)',
 ];
 
 // Built from local-time parts: the export formats in local time, so the
@@ -145,11 +146,11 @@ describe('buildCsv', () => {
     expect(buildCsv([]).charCodeAt(0)).not.toBe(0xfeff);
   });
 
-  it('writes one nine-column row per reading', () => {
+  it('writes one ten-column row per reading', () => {
     const rows = parseCsv(buildCsv([reading(), reading({ id: 'r2' })]));
     expect(rows).toHaveLength(3);
     for (const row of rows) {
-      expect(row).toHaveLength(9);
+      expect(row).toHaveLength(10);
     }
   });
 
@@ -165,18 +166,19 @@ describe('buildCsv', () => {
       'Pollution',
       '50.00',
       'ab***@example.com',
+      CAPTURED_AT.toISOString(),
     ]);
   });
 
-  it('neutralizes a formula in locationName and keeps nine columns', () => {
+  it('neutralizes a formula in locationName and keeps ten columns', () => {
     const rows = parseCsv(buildCsv([reading({ locationName: HOSTILE_FORMULA })]));
-    expect(rows[1]).toHaveLength(9);
+    expect(rows[1]).toHaveLength(10);
     expect(rows[1][1]).toBe(`'${HOSTILE_FORMULA}`);
   });
 
   it('keeps a quote-bearing soundClass inside its own cell', () => {
     const rows = parseCsv(buildCsv([reading({ soundClass: HOSTILE_QUOTE })]));
-    expect(rows[1]).toHaveLength(9);
+    expect(rows[1]).toHaveLength(10);
     expect(rows[1][5]).toBe(HOSTILE_QUOTE);
   });
 
@@ -213,12 +215,67 @@ describe('buildCsv', () => {
     expect(rows[1][1]).toBe('');
     expect(rows[1][5]).toBe('Unclassified');
     expect(rows[1][7]).toBe('');
+    expect(rows[1][9]).toBe('');
   });
 
   it('keeps negative coordinates numeric', () => {
     const rows = parseCsv(buildCsv([reading({ latitude: -33.8688, longitude: -151.2093 })]));
     expect(rows[1][2]).toBe('-33.8688');
     expect(rows[1][3]).toBe('-151.2093');
+  });
+});
+
+describe('ISO-8601 UTC timestamp (bug-12)', () => {
+  // 23:30 on 15 Jan in Colombo (UTC+05:30) is 18:00 UTC the same day;
+  // 00:15 on 16 Jan in Colombo is 18:45 UTC on the 15th.
+  const NEAR_MIDNIGHT_COLOMBO = Date.parse('2026-01-15T18:45:00.000Z');
+
+  it('adds the column after the existing ones, keeping their order', () => {
+    const header = parseCsv(buildCsv([]))[0];
+    expect(header.slice(0, 9)).toEqual(HEADERS.slice(0, 9));
+    expect(header[9]).toBe('Timestamp (UTC, ISO 8601)');
+  });
+
+  it('writes the instant as an ISO-8601 UTC string with a Z', () => {
+    const rows = parseCsv(buildCsv([reading({ timestamp: NEAR_MIDNIGHT_COLOMBO })]));
+    expect(rows[1][9]).toBe('2026-01-15T18:45:00.000Z');
+  });
+
+  it('is the same instant whatever time zone the exporter is in', () => {
+    const rows = parseCsv(buildCsv([reading({ timestamp: Date.UTC(2026, 11, 31, 23, 59, 59) })]));
+    expect(rows[1][9]).toBe('2026-12-31T23:59:59.000Z');
+  });
+
+  it('falls back to createdAt, like the Timestamp column', () => {
+    const rows = parseCsv(
+      buildCsv([reading({ timestamp: null, createdAt: Date.UTC(2026, 0, 2, 3, 4, 5) })]),
+    );
+    expect(rows[1][9]).toBe('2026-01-02T03:04:05.000Z');
+  });
+
+  it('isoUtc returns an empty string for no date', () => {
+    expect(isoUtc(null)).toBe('');
+    expect(isoUtc(new Date(0))).toBe('1970-01-01T00:00:00.000Z');
+  });
+
+  it('adds timestampUtc to the JSON readings and exportDateUtc to the metadata', () => {
+    const json = buildJsonExport(
+      [reading({ timestamp: NEAR_MIDNIGHT_COLOMBO })],
+      new Date('2026-06-01T02:30:00Z'),
+    );
+    expect(json.readings[0].timestampUtc).toBe('2026-01-15T18:45:00.000Z');
+    expect(json.metadata.exportDateUtc).toBe('2026-06-01T02:30:00.000Z');
+  });
+
+  it('keeps the existing JSON timestamp key', () => {
+    const json = buildJsonExport([reading()], new Date());
+    expect(json.readings[0].timestamp).toBe('2026-01-15 10:30:00');
+  });
+
+  it('writes null timestampUtc when the reading has no date', () => {
+    const json = buildJsonExport([reading({ timestamp: null })], new Date());
+    expect(json.readings[0].timestampUtc).toBeNull();
+    expect(json.readings[0].timestamp).toBe('Unknown');
   });
 });
 
@@ -263,7 +320,7 @@ describe('uncalibrated-dB disclosure', () => {
     const csv = buildCsv([reading()]);
     expect(csv.split('\n')[0]).toContain('"Noise Level (dB, uncalibrated estimate)"');
     for (const row of parseCsv(csv)) {
-      expect(row).toHaveLength(9);
+      expect(row).toHaveLength(10);
     }
   });
 

@@ -43,6 +43,11 @@ function quoteCell(text: string): string {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
+/** ISO 8601 text in UTC ('2026-01-15T05:00:00.000Z'), or '' when there is no date. */
+export function isoUtc(date: Date | null): string {
+  return date ? date.toISOString() : '';
+}
+
 /**
  * Build the CSV text (no BOM): a quoted header row, then one row per reading.
  * A pure function so it can be unit-tested; exportToCSV adds the BOM and
@@ -59,7 +64,10 @@ export function buildCsv(data: NoiseReading[]): string {
     'Category',
     'Type',
     'Confidence (%)',
-    'Contributor'
+    'Contributor',
+    // bug-12: an unambiguous instant; the 'Timestamp' column above is in the
+    // exporting browser's local time.
+    'Timestamp (UTC, ISO 8601)'
   ];
 
   // CSV Rows: every cell goes through csvCell / csvFixed
@@ -76,7 +84,8 @@ export function buildCsv(data: NoiseReading[]): string {
       csvCell(categoryLabel(reading)),
       csvCell(reading.soundType || 'Unknown'),
       csvFixed(confidencePercent(reading), 2),
-      csvCell(authorLabel(reading.userEmail))
+      csvCell(authorLabel(reading.userEmail)),
+      csvCell(isoUtc(date))
     ].join(',');
   });
 
@@ -108,6 +117,7 @@ export function buildJsonExport(data: NoiseReading[], exportedAt: Date) {
   return {
     metadata: {
       exportDate: format(exportedAt, 'yyyy-MM-dd HH:mm:ss'),
+      exportDateUtc: exportedAt.toISOString(),
       totalRecords: data.length,
       source: 'Urban Noise Pollution Mapper',
       version: '2.6.0',
@@ -116,6 +126,7 @@ export function buildJsonExport(data: NoiseReading[], exportedAt: Date) {
     readings: data.map(reading => ({
       id: reading.id,
       timestamp: formatExportTimestamp(reading),
+      timestampUtc: getReadingDate(reading)?.toISOString() ?? null,
       location: {
         name: reading.locationName || 'Unknown',
         coordinates: extractCoordinates(reading)

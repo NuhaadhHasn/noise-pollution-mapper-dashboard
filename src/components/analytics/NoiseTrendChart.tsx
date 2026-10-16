@@ -3,10 +3,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Button } from '@/components/ui/button';
-import { format } from 'date-fns';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 import { describeTrendChart, summarizeLevels } from '@/lib/chartSummary';
-import { bucketOf, weekLabel, type TimeGranularity } from '@/lib/trendBuckets';
+import { bucketLabel, bucketOf, type TimeGranularity } from '@/lib/trendBuckets';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 import { getReadingDate } from '@/lib/readings';
 
@@ -65,37 +64,9 @@ export function NoiseTrendChart() {
     return result;
   }, [readings, granularity]);
 
-  // Format display label based on granularity
-  const formatLabel = (timestamp: string) => {
-    try {
-      switch (granularity) {
-        case 'hour': {
-          return format(new Date(timestamp), 'MMM d, h a');
-        }
-        case 'week': {
-          return weekLabel(timestamp);
-        }
-        case 'month': {
-          // Handle YYYY-MM format
-          const parts = timestamp.split('-');
-          if (parts.length === 2) {
-            const year = parseInt(parts[0]);
-            const month = parseInt(parts[1]) - 1; // 0-indexed
-            const date = new Date(year, month, 1);
-            return format(date, 'MMM yyyy');
-          }
-          return format(new Date(timestamp + '-01'), 'MMM yyyy');
-        }
-        case 'day':
-        default: {
-          return format(new Date(timestamp), 'MMM d');
-        }
-      }
-    } catch (error) {
-      console.error('Error formatting date:', error, timestamp);
-      return timestamp;
-    }
-  };
+  // Axis and tooltip label, built from the bucket key text (bug-12), so it never
+  // re-parses a wall-clock string in the browser's time zone.
+  const formatLabel = (timestamp: string) => bucketLabel(timestamp, granularity);
 
   if (loading) {
     return <ChartSkeleton showLegend />;
@@ -232,6 +203,9 @@ export function NoiseTrendChart() {
           </LineChart>
         </ResponsiveContainer>
       </div>
+      <p className={cn("mt-2 text-xs", isDarkMode ? "text-gray-300" : "text-gray-600")}>
+        Days, weeks and hours follow Sri Lanka time (UTC+5:30).
+      </p>
     </div>
   );
 }
