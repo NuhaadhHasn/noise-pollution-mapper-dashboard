@@ -1,18 +1,31 @@
 import { useEffect } from 'react';
 import { MapContainer as LeafletMapContainer, TileLayer, useMap } from 'react-leaflet';
-import type { LatLngTuple } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { SRI_LANKA_BOUNDS, SRI_LANKA_CENTER } from '@/lib/mapBounds';
 
-// Sri Lanka bounds
-const SRI_LANKA_BOUNDS: LatLngTuple[] = [
-  [5.9, 79.5],  // Southwest corner
-  [9.9, 82.0],  // Northeast corner
-];
-
-const SRI_LANKA_CENTER: LatLngTuple = [7.8731, 80.7718];
+/** Where to fly the map. A new object (new `id`) flies again, even to the same spot. */
+export interface FlyToTarget {
+  id: number;
+  lat: number;
+  lng: number;
+  zoom?: number;
+}
 
 interface MapComponentProps {
   children?: React.ReactNode;
+  flyTo?: FlyToTarget | null;
+}
+
+/** Flies to the target whenever a new one arrives ("Current location", ux-6). */
+function FlyToController({ target }: { target: FlyToTarget | null | undefined }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!target) return;
+    map.flyTo([target.lat, target.lng], target.zoom ?? 14);
+    // Keyed on the request id: a re-render with the same request must not fly again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, target?.id]);
+  return null;
 }
 
 /**
@@ -48,7 +61,7 @@ function ResizeSync() {
  * - OpenStreetMap tiles
  * - Fills its parent: the parent must give it a height (ux-4)
  */
-export function MapComponent({ children }: MapComponentProps) {
+export function MapComponent({ children, flyTo }: MapComponentProps) {
   return (
     <LeafletMapContainer
       center={SRI_LANKA_CENTER}
@@ -65,6 +78,7 @@ export function MapComponent({ children }: MapComponentProps) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
       <ResizeSync />
+      <FlyToController target={flyTo} />
       {children}
     </LeafletMapContainer>
   );

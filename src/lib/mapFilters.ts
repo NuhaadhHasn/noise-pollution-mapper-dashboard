@@ -60,6 +60,7 @@ export interface FilterableReading extends CoordinateFields, DateFields {
   userId?: string;
   decibelLevel?: unknown;
   soundClass?: string | null;
+  locationName?: unknown;
 }
 
 export interface ReadingFilters {
@@ -68,6 +69,11 @@ export interface ReadingFilters {
   showAllUsers: boolean;
   /** Preset id; the window is computed from it at filter time (bug-6, bug-8). */
   preset: DatePresetId;
+  /**
+   * Optional search text (ux-6): keeps readings whose locationName contains it,
+   * ignoring case and surrounding spaces. Blank means no search.
+   */
+  searchQuery?: string;
   /** Optional inclusive dB window. No UI sets it yet (ux-6). */
   dbRange?: { min: number; max: number };
   /** Optional canonical category names (categories.ts). No UI sets it yet (ux-6). */
@@ -84,7 +90,8 @@ export function filterReadings<T extends FilterableReading>(
   filters: ReadingFilters,
   now: Date = new Date(),
 ): T[] {
-  const { userId, showAllUsers, preset, dbRange, categories } = filters;
+  const { userId, showAllUsers, preset, dbRange, categories, searchQuery } = filters;
+  const needle = searchQuery?.trim().toLowerCase() || null;
   const wanted = categories && categories.length > 0 ? categories : null;
   const range = presetRange(preset, now);
   const startMs = range ? range.start.getTime() : null;
@@ -104,6 +111,11 @@ export function filterReadings<T extends FilterableReading>(
       if (!date) return false;
       const ms = date.getTime();
       if (ms < startMs || ms > endMs) return false;
+    }
+
+    if (needle) {
+      const name = reading.locationName;
+      if (typeof name !== 'string' || !name.toLowerCase().includes(needle)) return false;
     }
 
     if (!showAllUsers && reading.userId !== userId) return false;

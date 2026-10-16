@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapComponent } from '@/components/map/MapContainer';
+import { MapComponent, type FlyToTarget } from '@/components/map/MapContainer';
 import { NoiseMarkers } from '@/components/map/NoiseMarkers';
 import MarkerClusterGroup from '@/components/map/MarkerClusterGroup';
 import { HeatmapLayer } from '@/components/map/HeatmapLayer';
@@ -12,11 +12,12 @@ import { UserFilterToggle } from '@/components/map/UserFilterToggle';
 import { DateRangeFilter } from '@/components/map/DateRangeFilter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MapPin, Search, Crosshair, Filter, ArrowLeft, Layers, RefreshCw } from 'lucide-react';
+import { MapPin, Search, Crosshair, Filter, ArrowLeft, Layers, RefreshCw, Loader2 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { DEFAULT_DATE_PRESET, filterReadings, presetSummary, type DatePresetId } from '@/lib/mapFilters';
+import { isWithinBounds } from '@/lib/mapBounds';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 import {
   Dialog,
@@ -35,6 +36,9 @@ export default function MapPage() {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showAllUsers, setShowAllUsers] = useState(false); // Phase 1: User filter
   const [datePreset, setDatePreset] = useState<DatePresetId>(DEFAULT_DATE_PRESET); // Phase 3: Date filter (a preset id; the window is computed at filter time)
+  const [flyTarget, setFlyTarget] = useState<FlyToTarget | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationNotice, setLocationNotice] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false); // Force refresh state
   const [confirmFullSyncOpen, setConfirmFullSyncOpen] = useState(false);
   const [fullSyncNotice, setFullSyncNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
@@ -46,9 +50,50 @@ export default function MapPage() {
   // can never disagree (bug-2, bug-9). The deps are the provider's readings array
   // plus primitives, so the memo recomputes only when one of them changes.
   const filteredReadings = useMemo(
-    () => filterReadings(readings, { userId, showAllUsers, preset: datePreset }),
-    [readings, userId, showAllUsers, datePreset],
+    () => filterReadings(readings, { userId, showAllUsers, preset: datePreset, searchQuery }),
+    [readings, userId, showAllUsers, datePreset, searchQuery],
   );
+  const isSearching = searchQuery.trim() !== '';
+
+  // The location notice is a passing message: it clears itself after a while.
+  useEffect(() => {
+    if (!locationNotice) return;
+    const timer = window.setTimeout(() => setLocationNotice(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [locationNotice]);
+
+  // "Current location" (ux-6): ask the browser for one position and fly there.
+  // Denial, no support and a timeout all end in an inline message, never alert().
+  const handleLocate = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocationNotice('Your browser cannot share its location.');
+      return;
+    }
+    setLocating(true);
+    setLocationNotice(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocating(false);
+        const { latitude, longitude } = position.coords;
+        if (!isWithinBounds(latitude, longitude)) {
+          setLocationNotice('Your location is outside the map area (Sri Lanka), so the map did not move.');
+          return;
+        }
+        setFlyTarget({ id: Date.now(), lat: latitude, lng: longitude });
+      },
+      (error) => {
+        setLocating(false);
+        setLocationNotice(
+          error.code === error.PERMISSION_DENIED
+            ? 'Location access was denied. Allow it in your browser settings to use this button.'
+            : error.code === error.TIMEOUT
+              ? 'Finding your location took too long. Please try again.'
+              : 'Your location is not available right now.',
+        );
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
+    );
+  };
 
   // "Fetch All Readings": re-download everything through the provider, which
   // swaps the cache only after the download succeeded (bug-5). The provider's
@@ -104,7 +149,9 @@ export default function MapPage() {
           <div className="relative flex-1 sm:flex-none min-w-[120px] sm:min-w-0">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Search..."
+              type="search"
+              placeholder="Search location..."
+              aria-label="Search readings by location name"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 h-8 text-sm w-full sm:w-[180px]"
@@ -152,10 +199,28 @@ export default function MapPage() {
             style={{ color: primaryColor }}
             className="h-8 w-8"
             title="Current location"
+            aria-label="Current location"
+            onClick={handleLocate}
+            disabled={locating}
           >
-            <Crosshair className="h-3.5 w-3.5" />
+            {locating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <Crosshair className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
           </Button>
         </div>
+
+        {locationNotice && (
+          <p
+            role="status"
+            className={`w-full text-xs text-center sm:text-right ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}
+          >
+            {locationNotice}
+          </p>
+        )}
       </div>
 
       {/* Marker Count Badge */}
@@ -189,7 +254,7 @@ export default function MapPage() {
             </div>
           </div>
         }>
-          <MapComponent>
+          <MapComponent flyTo={flyTarget}>
             <MarkerClusterGroup options={{
               maxClusterRadius: 40,  // Smaller clusters = faster
               disableClusteringAtZoom: 15,  // Show individual markers earlier
@@ -225,15 +290,18 @@ export default function MapPage() {
             <p className={`text-sm mb-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
               {readings.length === 0
                 ? 'Readings appear here once the mobile app has uploaded them.'
-                : 'Nothing matches the current Data Source and Date Range filters.'}
+                : isSearching
+                  ? 'Nothing matches the search and the current Data Source and Date Range filters.'
+                  : 'Nothing matches the current Data Source and Date Range filters.'}
             </p>
-            {readings.length > 0 && (!showAllUsers || datePreset !== DEFAULT_DATE_PRESET) && (
+            {readings.length > 0 && (!showAllUsers || datePreset !== DEFAULT_DATE_PRESET || isSearching) && (
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => {
                   setShowAllUsers(true);
                   setDatePreset(DEFAULT_DATE_PRESET);
+                  setSearchQuery('');
                 }}
               >
                 Show all readings
@@ -305,7 +373,7 @@ export default function MapPage() {
           </div>
 
           {/* Force Full Sync Button */}
-          <div role="group" aria-labelledby="map-filter-data-label" className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+          <div role="group" aria-labelledby="map-filter-data-label">
             <p id="map-filter-data-label" className={`text-sm font-medium mb-2 ${
               isDarkMode ? 'text-gray-300' : 'text-gray-700'
             }`}>
@@ -338,21 +406,6 @@ export default function MapPage() {
                 {fullSyncNotice.text}
               </p>
             )}
-          </div>
-
-          {/* Placeholder for future filters */}
-          <div>
-            <p className={`text-sm ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`}>
-              More filters coming soon:
-            </p>
-            <ul className={`text-xs mt-2 space-y-1 ${
-              isDarkMode ? 'text-gray-300' : 'text-gray-600'
-            }`}>
-              <li>• Category</li>
-              <li>• Noise level</li>
-            </ul>
           </div>
         </div>
       )}

@@ -87,6 +87,39 @@ describe('filterReadings', () => {
     expect(ids(filterReadings(list, { ...ALL, categories: [] }))).toEqual(['speech', 'quiet', 'none']);
   });
 
+  it('searches locationName by a case-insensitive substring (ux-6)', () => {
+    const list = [
+      reading({ id: 'a', locationName: 'Galle Face Green' }),
+      reading({ id: 'b', locationName: 'Colombo Fort' }),
+      reading({ id: 'c', locationName: 'GALLE Road' }),
+      reading({ id: 'none' }),
+    ];
+    expect(ids(filterReadings(list, { ...ALL, searchQuery: 'galle' }))).toEqual(['a', 'c']);
+    expect(ids(filterReadings(list, { ...ALL, searchQuery: 'FORT' }))).toEqual(['b']);
+    expect(ids(filterReadings(list, { ...ALL, searchQuery: 'kandy' }))).toEqual([]);
+  });
+
+  it('ignores a blank search and trims the text around a real one', () => {
+    const list = [reading({ id: 'a', locationName: 'Galle Face' }), reading({ id: 'none' })];
+    expect(ids(filterReadings(list, { ...ALL, searchQuery: '' }))).toEqual(['a', 'none']);
+    expect(ids(filterReadings(list, { ...ALL, searchQuery: '   ' }))).toEqual(['a', 'none']);
+    expect(ids(filterReadings(list, { ...ALL, searchQuery: '  face ' }))).toEqual(['a']);
+  });
+
+  it('treats the search text literally, not as a pattern', () => {
+    const list = [reading({ id: 'a', locationName: 'Fort (north)' }), reading({ id: 'b', locationName: 'Fort' })];
+    expect(ids(filterReadings(list, { ...ALL, searchQuery: '(north)' }))).toEqual(['a']);
+    expect(ids(filterReadings(list, { ...ALL, searchQuery: '.*' }))).toEqual([]);
+  });
+
+  it('combines the search with the other filters', () => {
+    const list = [
+      reading({ id: 'mine', locationName: 'Galle Face' }),
+      reading({ id: 'theirs', userId: 'u2', locationName: 'Galle Face' }),
+    ];
+    expect(ids(filterReadings(list, { ...ALL, showAllUsers: false, searchQuery: 'galle' }))).toEqual(['mine']);
+  });
+
   it('returns a new array and leaves the input untouched', () => {
     const list = [reading({ id: 'a' }), reading({ id: 'b', userId: 'u2' })];
     const copy = [...list];
