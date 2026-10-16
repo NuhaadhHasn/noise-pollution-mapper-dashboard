@@ -39,12 +39,23 @@ export const OVERLAP_MS = 10 * 60_000;
  */
 export const MAX_FUTURE_SKEW_MS = 24 * 3_600_000;
 
+/**
+ * Bounded staleness (priv-1, and the data-1 residual): at most this long after
+ * the last full replace, the next sync re-downloads the whole collection and
+ * swaps it in. That evicts readings deleted or rewritten in the app (Clear
+ * History, account deletion, email propagation) and picks up offline uploads
+ * back-dated past the delta's overlap.
+ */
+export const FULL_REPLACE_INTERVAL_MS = 24 * 3_600_000;
+
 /** sync_metadata key: newest server `timestamp` in the cache (epoch ms). */
 const WATERMARK_KEY = 'maxTimestampMs';
 /** sync_metadata key: wall-clock time of the last successful sync (epoch ms). Display only. */
 const LAST_SYNC_AT_KEY = 'lastSyncAt';
+/** sync_metadata key: wall-clock time of the last full replace (epoch ms). Missing means one is due. */
+const LAST_FULL_SYNC_AT_KEY = 'lastFullSyncAt';
 /** Every sync_metadata key this module writes; clearSyncData() resets them all. */
-const SYNC_METADATA_KEYS = [WATERMARK_KEY, LAST_SYNC_AT_KEY];
+const SYNC_METADATA_KEYS = [WATERMARK_KEY, LAST_SYNC_AT_KEY, LAST_FULL_SYNC_AT_KEY];
 
 export interface SyncResult {
   /** 'full': the whole collection was fetched. 'delta': only `timestamp >` (watermark - OVERLAP_MS). */
@@ -91,6 +102,19 @@ export function nextWatermark(
     }
   }
   return watermark;
+}
+
+/**
+ * True when the cache needs a full replace: never replaced, replaced
+ * FULL_REPLACE_INTERVAL_MS or more ago, or the clock has moved back since.
+ * Pure, for tests.
+ */
+export function isFullReplaceDue(lastFullSyncAt: number | null, nowMs: number): boolean {
+  if (lastFullSyncAt === null) {
+    return true;
+  }
+  const elapsed = nowMs - lastFullSyncAt;
+  return elapsed < 0 || elapsed >= FULL_REPLACE_INTERVAL_MS;
 }
 
 function fullQuery(): Query {
@@ -151,14 +175,20 @@ function share(task: () => Promise<SyncResult>): Promise<SyncResult> {
 async function performSync(forceFull: boolean): Promise<SyncResult> {
   try {
     const watermark = await getWatermark();
-    // No watermark yet means nothing has been fetched: a full fetch.
-    const deltaFrom = forceFull ? null : watermark;
+    const lastFullSyncAt = await readNumber(LAST_FULL_SYNC_AT_KEY);
+    // A full replace when forced, when the last one is FULL_REPLACE_INTERVAL_MS
+    // old (or missing), or when nothing has been fetched yet (no watermark).
+    const replaceDue = forceFull || isFullReplaceDue(lastFullSyncAt, Date.now());
+    const deltaFrom = replaceDue ? null : watermark;
     const full = deltaFrom === null;
 
     let readings: NoiseReading[];
     if (deltaFrom === null) {
+      // Fetch everything FIRST. The cache is swapped only after the download
+      // succeeded, in one IndexedDB transaction (bug-5): a failed fetch leaves
+      // the old cache and every cursor untouched.
       readings = await fetchReadings(fullQuery());
-      await localDb.setManyReadings(readings);
+      await localDb.replaceAllReadings(readings);
     } else {
       readings = await fetchReadings(deltaQuery(deltaFrom));
       if (readings.length > 0) {
@@ -174,6 +204,9 @@ async function performSync(forceFull: boolean): Promise<SyncResult> {
       await localDb.setSyncMetadata(WATERMARK_KEY, next);
     }
     await localDb.setSyncMetadata(LAST_SYNC_AT_KEY, finishedAt);
+    if (full) {
+      await localDb.setSyncMetadata(LAST_FULL_SYNC_AT_KEY, finishedAt);
+    }
 
     const totalReadings = await localDb.getReadingsCount();
     console.log(`[Sync] ${full ? 'Full' : 'Delta'} sync: ${readings.length} fetched, ${totalReadings} cached`);
@@ -200,14 +233,14 @@ export function syncNewReadings(): Promise<SyncResult> {
 }
 
 /**
- * "Fetch All Readings": clear the cache, then re-download every reading.
+ * "Fetch All Readings": re-download every reading, then swap the cache in one
+ * transaction. Nothing is cleared before the download has succeeded (bug-5).
  */
 export async function forceFullSync(): Promise<SyncResult> {
   // Let a sync that is already running finish first.
   while (inflight) {
     await inflight.catch(() => undefined);
   }
-  await clearSyncData();
   return share(() => performSync(true));
 }
 

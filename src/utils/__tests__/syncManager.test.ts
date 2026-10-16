@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDocs, orderBy, Timestamp, where } from 'firebase/firestore';
+import * as localDb from '@/utils/db';
 import * as syncManager from '@/utils/syncManager';
 
 // Tests never touch Firebase or a real IndexedDB (master playbook §2.15): the
@@ -48,6 +49,12 @@ vi.mock('firebase/firestore', () => {
 vi.mock('@/utils/db', () => ({
   getAllReadings: vi.fn(async () => Array.from(fakeDb.rows.values())),
   setManyReadings: vi.fn(async (readings: Array<{ id: string }>) => {
+    for (const reading of readings) {
+      fakeDb.rows.set(reading.id, reading);
+    }
+  }),
+  replaceAllReadings: vi.fn(async (readings: Array<{ id: string }>) => {
+    fakeDb.rows.clear();
     for (const reading of readings) {
       fakeDb.rows.set(reading.id, reading);
     }
@@ -108,6 +115,8 @@ function deferred<T>() {
 /** Puts the cache in the "already synced" state a delta starts from. */
 function seedSyncedCache(watermarkMs: number): void {
   fakeDb.meta.set('maxTimestampMs', watermarkMs);
+  // A recent full replace, so the next sync is a delta (step 2).
+  fakeDb.meta.set('lastFullSyncAt', NOW - 60 * MINUTE);
 }
 
 beforeEach(() => {
@@ -213,5 +222,69 @@ describe('syncNewReadings: single flight (perf-2)', () => {
     vi.mocked(getDocs).mockResolvedValueOnce(fakeSnapshot([]) as never);
     await syncManager.syncNewReadings();
     expect(getDocs).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('periodic full replace (priv-1, bug-5)', () => {
+  it('isFullReplaceDue: missing, stale or future-dated lastFullSyncAt means due', () => {
+    const interval = syncManager.FULL_REPLACE_INTERVAL_MS;
+    expect(syncManager.isFullReplaceDue(null, NOW)).toBe(true);
+    expect(syncManager.isFullReplaceDue(NOW - 60 * MINUTE, NOW)).toBe(false);
+    expect(syncManager.isFullReplaceDue(NOW - interval, NOW)).toBe(true);
+    expect(syncManager.isFullReplaceDue(NOW + 60 * MINUTE, NOW)).toBe(true);
+  });
+
+  it('replaces the whole cache when a full replace is due, evicting rows deleted in the app', async () => {
+    fakeDb.meta.set('maxTimestampMs', NOW - 60 * MINUTE);
+    fakeDb.meta.set('lastFullSyncAt', NOW - syncManager.FULL_REPLACE_INTERVAL_MS - MINUTE);
+    fakeDb.rows.set('deleted-in-app', { id: 'deleted-in-app' });
+    vi.mocked(getDocs).mockResolvedValueOnce(fakeSnapshot([fakeDoc('kept', NOW - 90 * MINUTE)]) as never);
+
+    const result = await syncManager.syncNewReadings();
+
+    expect(result.mode).toBe('full');
+    expect(where).not.toHaveBeenCalled();
+    expect(localDb.replaceAllReadings).toHaveBeenCalledTimes(1);
+    expect(Array.from(fakeDb.rows.keys())).toEqual(['kept']);
+    expect(fakeDb.meta.get('lastFullSyncAt')).toBe(NOW);
+    // A full replace recomputes the watermark from the docs actually present.
+    expect(fakeDb.meta.get('maxTimestampMs')).toBe(NOW - 90 * MINUTE);
+  });
+
+  it('runs a delta, not a replace, while the last full replace is recent', async () => {
+    seedSyncedCache(NOW - 60 * MINUTE);
+    vi.mocked(getDocs).mockResolvedValueOnce(fakeSnapshot([]) as never);
+
+    const result = await syncManager.syncNewReadings();
+
+    expect(result.mode).toBe('delta');
+    expect(localDb.replaceAllReadings).not.toHaveBeenCalled();
+  });
+
+  it('forceFullSync keeps the cache and every cursor when the fetch fails', async () => {
+    seedSyncedCache(NOW - 60 * MINUTE);
+    fakeDb.rows.set('cached', { id: 'cached' });
+    const metaBefore = new Map(fakeDb.meta);
+    vi.mocked(getDocs).mockRejectedValueOnce(new Error('unavailable'));
+
+    await expect(syncManager.forceFullSync()).rejects.toThrow('unavailable');
+
+    expect(Array.from(fakeDb.rows.keys())).toEqual(['cached']);
+    expect(fakeDb.meta).toEqual(metaBefore);
+    expect(localDb.clearAllReadings).not.toHaveBeenCalled();
+    expect(localDb.replaceAllReadings).not.toHaveBeenCalled();
+  });
+
+  it('forceFullSync swaps the cache in one replace after a successful fetch', async () => {
+    seedSyncedCache(NOW - 60 * MINUTE);
+    fakeDb.rows.set('stale', { id: 'stale' });
+    vi.mocked(getDocs).mockResolvedValueOnce(fakeSnapshot([fakeDoc('fresh', NOW - MINUTE)]) as never);
+
+    const result = await syncManager.forceFullSync();
+
+    expect(result.mode).toBe('full');
+    expect(localDb.replaceAllReadings).toHaveBeenCalledTimes(1);
+    expect(localDb.clearAllReadings).not.toHaveBeenCalled();
+    expect(Array.from(fakeDb.rows.keys())).toEqual(['fresh']);
   });
 });

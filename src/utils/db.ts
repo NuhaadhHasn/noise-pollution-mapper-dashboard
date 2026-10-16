@@ -307,6 +307,36 @@ export async function clearAllReadings(): Promise<void> {
 }
 
 /**
+ * Replace the whole readings cache atomically (priv-1, bug-5): clear() and
+ * every put() run in ONE readwrite transaction. Readers see the old rows or
+ * the new rows, never an empty or half-written store. If anything fails, the
+ * transaction aborts and the old rows stay.
+ */
+export async function replaceAllReadings(readings: NoiseReading[]): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error ?? new Error('Readings replace was aborted'));
+
+    try {
+      store.clear();
+      readings.forEach(reading => {
+        store.put(reading);
+      });
+    } catch (error) {
+      // A synchronous put() failure (for example a DataCloneError) would
+      // otherwise let the transaction commit the clear() with only some rows.
+      transaction.abort();
+      reject(error);
+    }
+  });
+}
+
+/**
  * Get count of cached readings
  */
 export async function getReadingsCount(): Promise<number> {
