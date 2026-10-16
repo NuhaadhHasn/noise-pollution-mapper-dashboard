@@ -3,6 +3,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { categoryInfo, categoryOf } from '@/lib/categories';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 
 interface CategoryData {
@@ -12,56 +13,7 @@ interface CategoryData {
   color: string;
 }
 
-// 17 sound categories with colors (matching Flutter app's yamnet_class_mapping.dart)
-const CATEGORY_COLORS: Record<string, string> = {
-  // Pollution Categories (9)
-  'Traffic': '#FF5252',
-  'Tuk-tuk': '#FF7043',
-  'Construction': '#FFA726',
-  'Industrial': '#FF6E40',
-  'Sirens': '#EF5350',
-  'Machinery': '#FF6E40',
-  'Alarm': '#F44336',
-  'Transport': '#E53935',
-  'Sports': '#FF4081',
-  // Ambient Categories (7)
-  'Music': '#42A5F5',
-  'Nature': '#66BB6A',
-  'Animals': '#8BC34A',
-  'Domestic': '#9CCC65',
-  'Body Sounds': '#7CB342',
-  'Weather': '#4FC3F7',
-  'Office': '#BA68C8',
-  // Both/Other (1)
-  'Speech': '#AB47BC',
-  'Religious': '#7E57C2',
-  'Market': '#FF7043',
-  'Other': '#9E9E9E',
-};
-
-// Category icons (matching Flutter app)
-const CATEGORY_ICONS: Record<string, string> = {
-  'Traffic': '🚗',
-  'Tuk-tuk': '🛺',
-  'Construction': '🏗️',
-  'Industrial': '🏭',
-  'Sirens': '🚨',
-  'Machinery': '⚙️',
-  'Alarm': '🔔',
-  'Transport': '🚂',
-  'Sports': '⚽',
-  'Music': '🎵',
-  'Nature': '🌿',
-  'Animals': '🐾',
-  'Domestic': '🏠',
-  'Body Sounds': '👤',
-  'Weather': '🌦️',
-  'Office': '💼',
-  'Speech': '💬',
-  'Religious': '🔔',
-  'Market': '🏪',
-  'Other': '❓',
-};
+// Bar colours and icons come from the shared taxonomy (src/lib/categories.ts).
 
 export function CategoryChart() {
   const { isDarkMode } = useTheme();
@@ -74,10 +26,10 @@ export function CategoryChart() {
     const groups = new Map<string, { totalDb: number; count: number }>();
 
     readings.forEach((reading) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const read = reading as any;
-      // Flutter app uses 'soundClass', web app might use 'soundCategory' - check both
-      const category = read.soundClass || read.soundCategory || 'Other';
+      // Canonical category: 'Speech-Pollution' / 'Speech-Ambient' (manual reports)
+      // fold into 'Speech'; a reading with no soundClass is 'Unclassified' and is
+      // never merged into the real 'Other' (data-3).
+      const category = categoryOf(reading);
       if (!groups.has(category)) {
         groups.set(category, { totalDb: 0, count: 0 });
       }
@@ -91,7 +43,7 @@ export function CategoryChart() {
         category,
         avgDb: Math.round((data.totalDb / data.count) * 10) / 10,
         count: data.count,
-        color: CATEGORY_COLORS[category] || '#9E9E9E',
+        color: categoryInfo(category).color,
       }))
       .sort((a, b) => b.avgDb - a.avgDb); // Sort by average dB (descending)
 
@@ -160,7 +112,7 @@ export function CategoryChart() {
               tick={{ fontSize: 11, fill: isDarkMode ? '#9E9E9E' : '#6B6B6B' }}
               width={120}
               tickFormatter={(category) => {
-                const icon = CATEGORY_ICONS[category] || '❓';
+                const icon = categoryInfo(category).icon;
                 return `${icon} ${category}`;
               }}
             />
@@ -186,7 +138,7 @@ export function CategoryChart() {
                 return [value, 'Readings'];
               }}
               labelFormatter={(label) => {
-                const icon = CATEGORY_ICONS[label as string] || '❓';
+                const icon = categoryInfo(label as string).icon;
                 return `${icon} ${label}`;
               }}
             />
