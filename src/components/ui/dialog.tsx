@@ -31,6 +31,13 @@ function DialogClose({
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
+// Stacking scale for the whole app (a11y-6). Leaflet's panes are isolated inside
+// the map container (`z-0`), so only page-level overlays compete:
+//   /map overlays: top bar and marker badge z-20, filter panel z-30
+//   mobile sidebar backdrop z-40, sidebar z-[45]
+//   Radix layers (this dialog, popovers, dropdowns, selects): z-50
+// A call site that must clear a portal may still pass z-[9999] (UserFilterToggle,
+// DateRangeFilter). Do not add new overlays above z-30 inside a page.
 function DialogOverlay({
   className,
   ...props

@@ -35,7 +35,7 @@ export function MapLegend({ showHeatmap }: MapLegendProps) {
     <div
       role="group"
       aria-label="Map legend"
-      className={`absolute bottom-16 left-4 z-[400] max-w-[15rem] rounded-lg px-3 py-2 shadow-lg text-xs ${
+      className={`absolute bottom-16 left-4 z-20 max-w-[15rem] rounded-lg px-3 py-2 shadow-lg text-xs ${
         isDarkMode ? 'bg-[#2D2640] text-gray-200' : 'bg-white text-gray-800'
       }`}
     >

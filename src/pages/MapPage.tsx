@@ -6,6 +6,8 @@ import MarkerClusterGroup from '@/components/map/MarkerClusterGroup';
 import { HeatmapLayer } from '@/components/map/HeatmapLayer';
 import { MapLegend } from '@/components/map/MapLegend';
 import { SyncStatus } from '@/components/map/SyncStatus';
+import { useDismissablePanel } from '@/hooks/useDismissablePanel';
+import { X } from 'lucide-react';
 import { UserFilterToggle } from '@/components/map/UserFilterToggle';
 import { DateRangeFilter } from '@/components/map/DateRangeFilter';
 import { Button } from '@/components/ui/button';
@@ -28,7 +30,7 @@ import {
 export default function MapPage() {
   const navigate = useNavigate();
   const { user } = useAuth(); // Get current user
-  const [showFilters, setShowFilters] = useState(false);
+  const { open: showFilters, setOpen: setShowFilters, panelRef, triggerRef } = useDismissablePanel();
   const [searchQuery, setSearchQuery] = useState('');
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showAllUsers, setShowAllUsers] = useState(false); // Phase 1: User filter
@@ -76,7 +78,7 @@ export default function MapPage() {
     <div className="relative w-full overflow-hidden bg-gray-200 dark:bg-gray-900" style={{ height: 'calc(100vh - 7rem)' }}>
       {/* Top Bar - Responsive */}
       <div
-        className={`absolute top-4 right-4 z-[300] flex flex-col sm:flex-row items-center gap-2 sm:gap-3 h-auto sm:h-12 ${
+        className={`absolute top-4 right-4 z-20 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 h-auto sm:h-12 ${
           isDarkMode ? 'bg-[#2D2640]/95' : 'bg-white/95'
         } backdrop-blur-sm rounded-lg shadow-lg px-2 sm:px-4 py-2 sm:py-4 transition-all duration-300`}
         style={{ 
@@ -93,8 +95,9 @@ export default function MapPage() {
             size="icon"
             onClick={() => navigate('/dashboard')}
             className="shrink-0 h-8 w-8"
+            aria-label="Back to dashboard"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           </Button>
 
           {/* Search - Full width on mobile */}
@@ -121,17 +124,23 @@ export default function MapPage() {
             onClick={() => setShowHeatmap(!showHeatmap)}
             className="h-8 w-8"
             title="Toggle heatmap"
+            aria-label="Heatmap"
+            aria-pressed={showHeatmap}
           >
             <Layers className="h-3.5 w-3.5" />
           </Button>
 
           {/* Filters */}
           <Button
+            ref={triggerRef}
             variant="outline"
             size="icon"
             onClick={() => setShowFilters(!showFilters)}
             className="h-8 w-8"
             title="Filters"
+            aria-label="Filters"
+            aria-expanded={showFilters}
+            aria-controls="map-filters-panel"
           >
             <Filter className="h-3.5 w-3.5" />
           </Button>
@@ -150,7 +159,7 @@ export default function MapPage() {
       </div>
 
       {/* Marker Count Badge */}
-      <div className={`absolute bottom-4 left-4 z-[400] px-3 py-1.5 rounded-lg shadow-lg ${
+      <div className={`absolute bottom-4 left-4 z-20 px-3 py-1.5 rounded-lg shadow-lg ${
         isDarkMode ? 'bg-[#2D2640] text-white' : 'bg-white text-gray-900'
       }`}>
         <div className="flex items-center gap-2">
@@ -201,7 +210,7 @@ export default function MapPage() {
 
       {/* Empty state (ux-2): a real overlay that names the cause. It is never a marker. */}
       {!loading && filteredReadings.length === 0 && (
-        <div className="absolute inset-0 z-[350] flex items-center justify-center p-4 pointer-events-none">
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 pointer-events-none">
           <div
             role="status"
             className={`pointer-events-auto max-w-sm rounded-lg shadow-lg p-4 text-center ${
@@ -234,20 +243,39 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* Filter Panel */}
+      {/* Filter Panel: a non-modal dialog (a11y-6). Esc closes it, focus moves in
+          when it opens and returns to the Filters button when it closes. */}
       {showFilters && (
-        <div className={`absolute top-20 left-4 w-80 z-[399] rounded-lg shadow-lg p-4 ${
-          isDarkMode ? 'bg-[#2D2640]' : 'bg-white'
-        }`}>
-          <h3 className="font-semibold mb-4">Filters</h3>
+        <div
+          ref={panelRef}
+          id="map-filters-panel"
+          role="dialog"
+          aria-labelledby="map-filters-title"
+          tabIndex={-1}
+          className={`absolute top-20 left-4 w-80 z-30 rounded-lg shadow-lg p-4 outline-none ${
+            isDarkMode ? 'bg-[#2D2640]' : 'bg-white'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 id="map-filters-title" className="font-semibold">Filters</h3>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowFilters(false)}
+              className="h-8 w-8"
+              aria-label="Close filters"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
           
           {/* User Filter Section */}
-          <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
-            <label className={`text-sm font-medium mb-2 block ${
+          <div role="group" aria-labelledby="map-filter-source-label" className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <p id="map-filter-source-label" className={`text-sm font-medium mb-2 ${
               isDarkMode ? 'text-gray-300' : 'text-gray-700'
             }`}>
               Data Source
-            </label>
+            </p>
             <UserFilterToggle 
               showAllUsers={showAllUsers}
               onFilterChange={setShowAllUsers}
@@ -262,12 +290,12 @@ export default function MapPage() {
           </div>
           
           {/* Date Range Filter Section (Phase 3) */}
-          <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
-            <label className={`text-sm font-medium mb-2 block ${
+          <div role="group" aria-labelledby="map-filter-date-label" className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <p id="map-filter-date-label" className={`text-sm font-medium mb-2 ${
               isDarkMode ? 'text-gray-300' : 'text-gray-700'
             }`}>
               Date Range
-            </label>
+            </p>
             <DateRangeFilter value={datePreset} onChange={setDatePreset} />
             <p className={`text-xs mt-2 ${
               isDarkMode ? 'text-gray-300' : 'text-gray-600'
@@ -277,12 +305,12 @@ export default function MapPage() {
           </div>
 
           {/* Force Full Sync Button */}
-          <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
-            <label className={`text-sm font-medium mb-2 block ${
+          <div role="group" aria-labelledby="map-filter-data-label" className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <p id="map-filter-data-label" className={`text-sm font-medium mb-2 ${
               isDarkMode ? 'text-gray-300' : 'text-gray-700'
             }`}>
               Data Management
-            </label>
+            </p>
             <Button
               variant="outline"
               size="sm"
