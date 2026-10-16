@@ -5,10 +5,9 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { bucketOf, weekLabel, type TimeGranularity } from '@/lib/trendBuckets';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 import { getReadingDate } from '@/lib/readings';
-
-type TimeGranularity = 'hour' | 'day' | 'week' | 'month';
 
 interface TrendDataPoint {
   timestamp: string;
@@ -26,7 +25,7 @@ export function NoiseTrendChart() {
   const groupedData = useMemo(() => {
     if (readings.length === 0) return [];
 
-    const groups = new Map<string, number[]>();
+    const groups = new Map<string, { start: number; dbLevels: number[] }>();
 
     readings.forEach((reading) => {
       const timestamp = getReadingDate(reading);
@@ -35,40 +34,20 @@ export function NoiseTrendChart() {
       if (!timestamp) {
         return;
       }
-      let key: string;
+      const { key, start } = bucketOf(timestamp, granularity);
 
-      switch (granularity) {
-        case 'hour': {
-          key = format(timestamp, 'yyyy-MM-dd HH:00');
-          break;
-        }
-        case 'week': {
-          // ISO week number
-          const weekNum = getWeekNumber(timestamp);
-          key = `${timestamp.getFullYear()}-W${weekNum}`;
-          break;
-        }
-        case 'month': {
-          key = format(timestamp, 'yyyy-MM');
-          break;
-        }
-        case 'day':
-        default: {
-          key = format(timestamp, 'yyyy-MM-dd');
-          break;
-        }
+      const group = groups.get(key);
+      if (group) {
+        group.dbLevels.push(reading.decibelLevel);
+      } else {
+        groups.set(key, { start, dbLevels: [reading.decibelLevel] });
       }
-
-      if (!groups.has(key)) {
-        groups.set(key, []);
-      }
-      groups.get(key)!.push(reading.decibelLevel);
     });
 
     // Convert to array and calculate stats
     const result: TrendDataPoint[] = Array.from(groups.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([timestamp, dbLevels]) => ({
+      .sort(([, a], [, b]) => a.start - b.start)
+      .map(([timestamp, { dbLevels }]) => ({
         timestamp,
         avgDb: Math.round((dbLevels.reduce((sum, db) => sum + db, 0) / dbLevels.length) * 10) / 10,
         maxDb: Math.round(Math.max(...dbLevels) * 10) / 10,
@@ -78,15 +57,6 @@ export function NoiseTrendChart() {
     return result;
   }, [readings, granularity]);
 
-  // Helper function to get week number
-  function getWeekNumber(date: Date): number {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  }
-
   // Format display label based on granularity
   const formatLabel = (timestamp: string) => {
     try {
@@ -95,7 +65,7 @@ export function NoiseTrendChart() {
           return format(new Date(timestamp), 'MMM d, h a');
         }
         case 'week': {
-          return `Week ${timestamp.split('-W')[1]}`;
+          return weekLabel(timestamp);
         }
         case 'month': {
           // Handle YYYY-MM format
