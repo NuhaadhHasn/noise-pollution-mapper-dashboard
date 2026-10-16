@@ -177,7 +177,7 @@ export function CategoryChart() {
                 display: 'none',
               }}
             />
-            <Bar dataKey="avgDb" name="Average dB" radius={[0, 4, 4, 0]} activeBar={null}>
+            <Bar dataKey="avgDb" name="Average dB" radius={[0, 4, 4, 0]} activeBar={false}>
               {categoryData.map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`} 
