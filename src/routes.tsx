@@ -1,5 +1,6 @@
-import { lazy, Suspense, type ReactNode } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { titleForPath } from '@/lib/documentTitle';
 import { useTheme } from '@/contexts/ThemeContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -41,6 +42,12 @@ function PageSuspense({ children }: { children: ReactNode }) {
 
 function AppRoutes() {
   const { getBackgroundColor } = useTheme();
+
+  // ux-14: one document title per route, set before the lazy page chunk loads
+  const { pathname } = useLocation();
+  useEffect(() => {
+    document.title = titleForPath(pathname);
+  }, [pathname]);
 
   return (
     <div
