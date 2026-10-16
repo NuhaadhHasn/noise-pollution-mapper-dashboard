@@ -50,6 +50,60 @@ PATH_RE = re.compile(r'`((?:APP:)?[\w./\-]+\.(?:tsx?|jsx?|json|rules|dart|md|ya?
 
 results = []
 
+# --- Optional compile check (MATERIALIZE=<workspace dir>) -------------------------
+# After each cluster, write the in-memory dashboard files into a workspace that is a
+# `git archive` copy of the repo with node_modules junctioned in, apply the cluster's
+# file deletions, and type-check it. Writes nothing to either real repo.
+DELETIONS = {
+    '03': ['functions', 'scripts/upload-cache.sh', 'src/utils/cacheDownloader.ts',
+           'src/components/map/CacheStatus.tsx'],
+    '07': ['src/services/userService.ts'],
+}
+CHECKS = []
+
+
+def materialize_and_check(spec):
+    import shutil
+    import subprocess
+    ws = os.environ['MATERIALIZE']
+    for rel in DELETIONS.get(spec[:2], []):
+        target = os.path.normpath(os.path.join(DASH, rel))
+        for p in list(vfs):
+            if p == target or p.startswith(target + os.sep):
+                vfs[p] = None
+        wpath = os.path.join(ws, rel)
+        if os.path.isdir(wpath):
+            shutil.rmtree(wpath)
+        elif os.path.exists(wpath):
+            os.remove(wpath)
+    for p, content in vfs.items():
+        if not p.startswith(os.path.normpath(DASH) + os.sep):
+            continue  # APP-repo files (rules) are not compiled here
+        wpath = os.path.join(ws, os.path.relpath(p, DASH))
+        if content is None:
+            if os.path.isfile(wpath):
+                os.remove(wpath)
+            continue
+        os.makedirs(os.path.dirname(wpath), exist_ok=True)
+        with open(wpath, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(content)
+    if spec[:2] < os.environ.get('CHECK_FROM', '00'):
+        return  # files are still materialized; only the type-check is skipped
+    tsbi = os.path.join(os.environ['TSBI_DIR'], 'app.tsbuildinfo')
+    # npx.cmd with an argument list: no shell quoting, so the path arrives intact.
+    cmd = ['npx.cmd', 'tsc', '-p', 'tsconfig.app.json', '--noEmit', '--pretty', 'false',
+           '--incremental', '--tsBuildInfoFile', tsbi]
+    proc = subprocess.run(cmd, cwd=ws, capture_output=True, text=True,
+                          encoding='utf-8', errors='replace',
+                          creationflags=getattr(subprocess, 'BELOW_NORMAL_PRIORITY_CLASS', 0))
+    out = proc.stdout + proc.stderr
+    log = os.path.join(os.environ['TSBI_DIR'], f'tsc_after_{spec[:2]}.log')
+    with open(log, 'w', encoding='utf-8') as f:
+        f.write(out)
+    errs = [l for l in out.splitlines() if 'error TS' in l]
+    CHECKS.append((spec, proc.returncode, len(errs)))
+    print(f'[compile] after {spec}: tsc exit {proc.returncode}, {len(errs)} error(s) -> {log}', flush=True)
+
 
 def blocks(lines):
     """Yield (header_context_lines, block_text, start_line) for each fenced block."""
@@ -162,6 +216,8 @@ for spec in specs:
             continue
     if pending:
         results.append((spec, pending[2], 'BEFORE-WITHOUT-AFTER', pending[0]))
+    if os.environ.get('MATERIALIZE'):
+        materialize_and_check(spec)
 
 from collections import Counter
 print('Summary per spec:')

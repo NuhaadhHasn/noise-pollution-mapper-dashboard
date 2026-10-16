@@ -59,6 +59,25 @@ re-run.
 > earlier cluster was confirmed relocated (for example, into `mapFilters.ts` /
 > `buildHeatPoints()`), not lost. Re-run the dry run after editing any spec, and before
 > starting execution if the working tree has moved past HEAD `353bbdd`.
+>
+> **Compile-checked 2026-10-16 (D1 = B, 09.6 applied).** `dryrun_playbook.py` with
+> `MATERIALIZE` writes each cluster's result into a `git archive` copy (node_modules
+> junctioned in, no downloads) and runs `tsc -p tsconfig.app.json` after every cluster.
+> - **Clusters 01-11: 0 type errors.**
+> - **After 12 (full `strict`): 0 real errors.** The only 2 errors were `it.each` parameters
+>   typed by the audit's stand-in for vitest, which was not downloaded.
+> - **ESLint on the final tree: 0 problems.** HEAD has 1 warning.
+> - **`vite build` of the final tree: passes** with no circular-chunk or >500 kB warning.
+>
+> That build caught a real 11.2 defect, now fixed in the spec. Rollup had dragged
+> react/react-dom into `vendor-leaflet` and clsx into `vendor-recharts`, so `/login` still
+> loaded both heavy chunks. The new `vendor-core` group fixes it. `/login` now loads the
+> entry + `vendor-core` + `vendor-firebase` ≈ 700 kB, against 1,423 kB at HEAD; recharts
+> (421 kB) and Leaflet (193 kB) load only on their pages.
+>
+> The same check fixed two of 11.2's acceptance greps, and step 11.3 (stale-tab recovery)
+> was added from a live production check. **Not verified here:** running the vitest suites
+> (it needs the vitest download) and rules behaviour in the Firestore emulator.
 
 1. **Read this document fully first.** Then settle the owner decisions in §3.4
    with the owner in ONE round of questions before the first commit. After
@@ -232,7 +251,7 @@ re-run.
 | 8 | 08 Access control & resilience | `08_access_resilience.md` | 3 | **high** | Opus | sec-4 (auth gate, which also gates the provider's reads), plus the sec-1 render-side defence (error boundaries) and a11y-7 (login). It needs the 05 provider. |
 | 9 | 09 Map correctness & performance | `09_map_correctness_perf.md` | 6 | low | Sonnet (09.6: Opus) | Six map Mediums. It needs the 05 provider, the 06 bands and the 07 caveat string. 09.6 is the most dangerous MERGE in the playbook (§4.6). |
 | 10 | 10 Accessibility & layout | `10_accessibility_layout.md` | 7 | low | Sonnet | Touches nearly every UI file. It goes after the functional clusters so it edits their final shapes once. |
-| 11 | 11 Bundle splitting | `11_bundle_splitting.md` | 2 | low | Sonnet | perf-5. `routes.tsx` and `index.css` are touched only after 08 and 10 settle them. |
+| 11 | 11 Bundle splitting | `11_bundle_splitting.md` | 3 | low | Sonnet | perf-5. `routes.tsx` and `index.css` are touched only after 08 and 10 settle them. |
 | 12 | 12 Type safety | `12_type_safety.md` | 3 | **high** | Opus | arch-1. Turning on `strict` touches types in almost every file, so it runs LAST: any earlier position would break every later cluster's anchors. |
 
 ### 3.2 Hard dependencies (must not be violated)
@@ -322,6 +341,16 @@ otherwise.
 | **D3** | How strict the rules validation is | dB in `[0, 200]`; lat `[-90, 90]`; lng `[-180, 180]`; `timestamp <= request.time + 1 day` (offline captures from fast device clocks still pass); key whitelist = the 12 production keys; `userEmail` string ≤120 **or null** (the offline path can write null); `soundType in ['Pollution','Ambient']`; `confidence` in `[0, 1]`. Legacy docs are not re-validated on email-only and anonymization updates (§4.1). | 02.2 |
 | **D4** | Are the cache-export Cloud Functions deployed? | Check read-only (M2). If they are listed, the owner approves deleting them. If they are not listed, there is nothing to do. | 03.1, M2 |
 | **D5** | perf-4 (bulk cluster add) | Measure first (Performance panel, `/map`, all users). If the marker commit burst is under 300 ms on the owner's hardware, skip the step with a note and record it in §7. Otherwise implement it. | 09.6 |
+
+**DECIDED by the owner, 2026-10-16.** Execute with these choices and do not re-ask.
+
+| ID | Decision | Basis |
+|----|----------|-------|
+| **D1** | **(B) Community-wide viewing.** Apply every `D1(B) only` block and skip every `D1(A) only` block. Only the CSV/JSON export is gated on `users/{uid}.role == 'admin'`. The "Request access" copy is removed. 02.4 still applies. | Checked in code: the dashboard login is `signInWithEmailAndPassword` against the app's own Firebase Auth (`LoginPage.tsx:36`). `ProtectedRoute.tsx` checks only `isAuthenticated`, and nothing in `src/` checks a role. So any app user can already log in, and (B) keeps that behaviour. It exposes nothing the app's own community map does not already show any signed-in user; the bulk GPS export is the part that gets gated. M3 is already satisfied: production has exactly one `role: 'admin'` doc (probe, 2026-10-16). |
+| **D2** | **Default: "Unclassified".** Exclude unclassified readings from the CategoryChart bars, show the caption, label them 'Unclassified' in the table, popup and exports. | Owner's choice. |
+| **D3** | **Default bounds, as listed above.** | Owner chose the recommendation. `probe2.cjs` showed all 3,374 production docs pass them: no extra keys, dB 6.0-80.7, all coordinates in Sri Lanka, confidence 0.043-1.0, no future timestamps, longest strings 20 characters. |
+| **D4** | **Nothing to do; M2 is resolved.** No cache-export function is deployed, and none ever was. | `firebase functions:list` (2026-10-16) returned 403: "Cloud Functions API has not been used in project noise-pollution-mapper-9ad3d before". 03.1 still deletes the dead `functions/` source. |
+| **D5** | **Implement 09.6 without the measure-first gate.** | Owner's choice. Skip the D5 measurement and apply 09.6 as written. |
 
 ### 3.5 Session batching
 
@@ -891,6 +920,7 @@ verbatim from the cluster specs.
 **Cluster 11 — Bundle splitting** (`audit/playbook/11_bundle_splitting.md`; apply §4.14)
 - [ ] 44. `perf(bundle): lazy-load route pages behind Suspense (perf-5)`
 - [ ] 45. `perf(bundle): split firebase, recharts and leaflet vendor chunks and scope leaflet CSS (perf-5)`
+- [ ] 45a. `fix(deploy): recover stale tabs from missing chunks and stop serving index.html as an asset (perf-5, sec-5)` (11.3, added 2026-10-16 from a live production check; numbered 45a so later items keep their numbers)
 
 **Cluster 12 — Type safety** (`audit/playbook/12_type_safety.md`; apply §4.13, §4.16)
 - [ ] 46. `refactor(types): type Firebase handles as Auth and Firestore instead of any (arch-1)`
@@ -1027,7 +1057,8 @@ the full evidence is in the audit docs.
   residual. 07.2 masks it at display time in the meantime.
 - **sec-5**: `vercel.json` sets no security headers (CSP, frame-ancestors,
   nosniff), and its catch-all rewrite serves `index.html` for missing
-  assets.
+  assets. (The rewrite half moved into 11.3 on 2026-10-16. CSP, frame-ancestors
+  and nosniff stay here.)
 - **ux-6**: The dead map search box, the "Current location" button, and
   "More filters coming soon" placeholders. Wire them up or remove them.
 - **ux-8** (the remainder): Add a NotFound route; preserve the return path

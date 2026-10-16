@@ -276,7 +276,13 @@ AFTER:
 // of page needs, so /login never downloads recharts or Leaflet. Packages that
 // the recharts group depends on are listed too: a dependency left outside its
 // group can make two chunks import each other ("Circular chunk" build warning).
-// clsx is NOT in the recharts group: the app's own code uses it.
+// clsx is NOT in the recharts group: the app's own code uses it (CORE_PACKAGES).
+// Shared runtime that the always-loaded entry needs. It MUST be its own group,
+// checked first: Rollup moves a manual chunk's unassigned dependencies INTO that
+// chunk, so without this react/react-dom land in vendor-leaflet (via
+// react-leaflet) and clsx in vendor-recharts (via recharts), and the entry then
+// imports both heavy chunks statically (verified with a source-map build).
+const CORE_PACKAGES = /\/node_modules\/(?:react|react-dom|scheduler|clsx)\//
 const FIREBASE_PACKAGES = /\/node_modules\/(?:firebase|@firebase|idb|tslib)\//
 const RECHARTS_PACKAGES =
   /\/node_modules\/(?:recharts|recharts-scale|victory-vendor|d3-[^/]+|internmap|react-smooth|react-transition-group|dom-helpers|prop-types|react-is|fast-equals|eventemitter3|lodash|tiny-invariant|decimal\.js-light)\//
@@ -287,6 +293,7 @@ const LEAFLET_PACKAGES =
 
 function manualChunks(id: string): string | undefined {
   const normalized = id.replace(/\\/g, '/')
+  if (CORE_PACKAGES.test(normalized)) return 'vendor-core'
   if (FIREBASE_PACKAGES.test(normalized)) return 'vendor-firebase'
   if (RECHARTS_PACKAGES.test(normalized)) return 'vendor-recharts'
   if (LEAFLET_PACKAGES.test(normalized)) return 'vendor-leaflet'
@@ -358,8 +365,8 @@ Placement note: this removes exactly one line (the original line 7). Do not touc
 **Acceptance criteria**
 - `npm run build` succeeds and its output lists separate `vendor-firebase-*.js`, `vendor-recharts-*.js` and `vendor-leaflet-*.js` files, one page chunk per route (`LoginPage-*`, `DashboardPage-*`, `MapPage-*`, `AnalyticsPage-*`), the entry `index-*.js`, and CSS split so that Leaflet's rules are in a CSS file other than the entry CSS.
 - The build output has no "Circular chunk" warning. If it has one, add the package it names to the group that already contains its neighbour, and re-run (this is the only permitted adjustment; see Risks).
-- `grep -o 'assets/vendor-[a-z]*-[A-Za-z0-9_-]*\.js' dist/index.html | sort -u` prints `vendor-firebase` only. `grep -o 'from"./vendor-[a-z]*' dist/assets/index-*.js | sort -u` also prints only `vendor-firebase`. Neither names `vendor-recharts` or `vendor-leaflet`.
-- `grep -c "leaflet-container" dist/assets/index-*.css` prints `0` (the entry CSS has no Leaflet rules), and a CSS file under `dist/assets/` does contain `.leaflet-container`.
+- `grep -o 'assets/vendor-[a-z]*-[A-Za-z0-9_-]*\.js' dist/index.html | sort -u` prints exactly `vendor-core` and `vendor-firebase`. `grep -o 'from"./vendor-[a-z]*' dist/assets/index-*.js | sort -u` also prints exactly those two. Neither names `vendor-recharts` or `vendor-leaflet`.
+- `grep -c "leaflet-pane" dist/assets/index-*.css` prints `0` (the entry CSS has no Leaflet rules), and a CSS file under `dist/assets/` does contain `.leaflet-pane`. Do NOT grep for `leaflet-container`: 10.7 deliberately writes `:not(.leaflet-container button)` scoping selectors into the entry CSS, which give 3 correct matches.
 - `/login` (signed out, cache disabled) requests no recharts or leaflet JS or CSS.
 - `/dashboard` (signed in) renders the mini-map with tiles, zoom control, attribution and marker clusters, and the charts. `/map` renders the map, the heatmap toggle shows the heat layer, and cluster bubbles are styled (the markercluster CSS). `/analytics` renders all charts. No console error mentions `L is not defined` or `Cannot read properties of undefined (reading 'Layer')`.
 - Leaflet's zoom buttons and popup close button look the same as before this cluster (30 px zoom buttons; not stretched by the 44 px rule).
@@ -378,7 +385,7 @@ Run `npm test` and `npm run build` ONCE, alone: the build took 7m25s on this mac
 ls -l dist/assets/*.js dist/assets/*.css
 grep -o 'assets/vendor-[a-z]*-[A-Za-z0-9_-]*\.js' dist/index.html | sort -u
 grep -o 'from"./vendor-[a-z]*' dist/assets/index-*.js | sort -u
-grep -c "leaflet-container" dist/assets/index-*.css
+grep -c "leaflet-pane" dist/assets/index-*.css
 ```
 Manual: the acceptance checks above, using `npm run preview` after the build (stop it when done). `dist/` is gitignored.
 
@@ -389,7 +396,7 @@ Record the chunk table in the commit body, using the sizes the build prints (kB 
 | Before (353bbdd) | 1 | `index-BKHYcTwv.js` 1,422.67 / 419.78 | same file | `index-Bd92eCl1.css` 92.05 / 19.84 |
 | After | N | name, size / gzip | `index-*.js` size / gzip | entry CSS size / gzip, plus the map CSS size / gzip |
 
-Add one line stating whether the ">500 kB" warning remains and for which chunk. State that `/login` loads the entry and `vendor-firebase` only.
+Add one line stating whether the ">500 kB" warning remains and for which chunk. State that `/login` loads the entry, `vendor-core` and `vendor-firebase` only.
 
 **Commit title:** `perf(bundle): split firebase, recharts and leaflet vendor chunks and scope leaflet CSS (perf-5)`
 
@@ -397,10 +404,117 @@ Add one line stating whether the ">500 kB" warning remains and for which chunk. 
 
 ---
 
+### Step 3 — perf-5 follow-through, sec-5 (rewrite half): recover stale tabs and stop serving `index.html` as an asset
+
+*Added 2026-10-16 after the audit, from a live check of production (`curl -sI`).* A request for a non-existent `https://noise-pollution-mapper-dashboard.vercel.app/assets/x.js` returns **200 with `index.html`**, `Content-Type: text/html` and `Cache-Control: public, max-age=31536000, immutable`. The catch-all rewrite (`vercel.json`) swallows missing assets, and the `/assets/(.*)` header rule then marks the HTML as immutable for a year.
+
+Before Step 1 nothing requested a missing chunk. After Step 1 every deploy does: a tab opened on the previous build asks for chunk names that no longer exist. Two consequences:
+
+- The import fails, and the 08.2 boundary shows an error card that only "Reload Page" fixes, because `React.lazy` caches the rejected import.
+- The browser stores HTML under that chunk's URL for a year. If the deploy is later rolled back (Vercel "Promote" of the previous deployment, which this playbook's rollback notes rely on), that chunk name is valid again. But the browser serves its cached HTML instead, and the route stays broken for that user until they clear site data.
+
+**Goal:** A missing `/assets/*` file is a 404, never `index.html`. A failed dynamic import reloads the page once, automatically, to pick up the new build. A guard prevents a reload loop when the chunk is genuinely unreachable.
+
+**Files:**
+- `vercel.json`
+- `src/main.tsx` (as left by 08.2g)
+
+**Exact changes**
+
+3a. `vercel.json`: exclude `/assets/` from the SPA fallback. Vercel's `source` accepts a path-to-regexp pattern with a negative lookahead; this is Vercel's documented form for excluding a prefix from a catch-all rewrite. No other cluster edits `vercel.json`.
+
+BEFORE (`vercel.json`, lines 7-12 at HEAD `353bbdd`, verbatim):
+```json
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+```
+
+AFTER:
+```json
+  "rewrites": [
+    {
+      "source": "/((?!assets/).*)",
+      "destination": "/index.html"
+    }
+  ],
+```
+
+3b. `src/main.tsx`: reload once when Vite reports a failed dynamic import. This anchors on 08.2g's AFTER text (the `GlobalErrorPage` import line). The file keeps its no-semicolon style.
+
+BEFORE (`src/main.tsx`, as left by 08.2g, verbatim):
+```tsx
+import { GlobalErrorPage } from './components/GlobalErrorPage'
+```
+
+AFTER:
+```tsx
+import { GlobalErrorPage } from './components/GlobalErrorPage'
+
+// Stale-tab recovery (11.3). After a deploy, a tab opened on the previous build
+// asks for chunk names that no longer exist, and Vite fires vite:preloadError.
+// Reload once to pick up the new index.html and its chunk names. The guard
+// stops a reload loop when the chunk is genuinely unreachable (offline, or a
+// broken deploy): within 10 s of the last automatic reload the error is let
+// through to the 08.2 boundary instead.
+const CHUNK_RELOAD_KEY = 'chunk-reload-at'
+window.addEventListener('vite:preloadError', (event) => {
+  let last = 0
+  try {
+    last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) ?? 0)
+  } catch {
+    // sessionStorage blocked: fall through and reload once
+  }
+  if (Date.now() - last < 10_000) return
+  try {
+    sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()))
+  } catch {
+    // sessionStorage blocked: the reload still happens
+  }
+  event.preventDefault()
+  window.location.reload()
+})
+```
+
+Placement note: the listener is registered at module load, before `createRoot(...)`, so it is in place before any lazy route can start loading.
+
+**Edge cases to preserve**
+- **Static assets keep their long cache.** The `/assets/(.*)` header rule is unchanged. It now applies only to files that exist, plus the 404 for a missing one. A 404 response is not served `immutable` HTML, so nothing wrong is cached under a JS URL.
+- **Every non-asset path still falls back to `index.html`.** Deep links such as `/map` and `/analytics`, and a refresh on them, keep working.
+- **No reload loop.** If the reload itself fails to fetch the chunk (offline), the second `vite:preloadError` lands within 10 s and is not prevented, so the 08.2 boundary shows its card as before.
+- **Blocked `sessionStorage`** (privacy mode): the reload still happens once per failure.
+- **Dev server unaffected.** `vite:preloadError` does not fire for HMR, and `vercel.json` is not used by `vite dev`.
+
+**Acceptance criteria**
+- After the deploy: `curl -sI https://noise-pollution-mapper-dashboard.vercel.app/assets/does-not-exist.js` returns **404**. Before this step it returned `200` + `text/html` + `immutable`.
+- `curl -sI https://noise-pollution-mapper-dashboard.vercel.app/map` still returns `200` + `text/html`.
+- Stale-tab check:
+  1. Open `/dashboard`, but do not visit `/analytics`.
+  2. Deploy any change that alters the analytics chunk hash.
+  3. In the old tab, click Analytics.
+  4. The page reloads once and shows Analytics. It does not show the error card.
+
+**Verify**
+```
+npx tsc -b
+npx eslint src/main.tsx
+npm run build
+```
+Then the three acceptance checks after the Vercel deploy. The push is the deploy (§4.15), so take it only with the owner's go-ahead.
+
+**Commit title:** `fix(deploy): recover stale tabs from missing chunks and stop serving index.html as an asset (perf-5, sec-5)`
+
+(The commit message carries no `Co-Authored-By` trailer and no "Generated with" line.)
+
+---
+
 ## Risks & rollback
 
 - **Step 2's regex groups are the one part that cannot be settled without a build.** No build was run while writing this spec (the machine is resource-constrained). The groups were derived from `recharts@2.15.4`'s real dependency list, but a dependency left out of a group can surface as a "Circular chunk" warning, and a package that app code also uses can drag a vendor chunk into the entry's static imports. The Step 2 acceptance greps catch both. The permitted fix is to move the named package into the group of its neighbour, never to add a catch-all `node_modules` rule (that bundles react and radix into the vendor chunks and defeats the point).
-- **Stale tabs after a deploy.** Chunk names are content-hashed and served `immutable`. A browser tab opened before a deploy that then navigates to a not-yet-visited route asks for an old chunk name, which no longer exists. `vercel.json` rewrites that URL to `/index.html`, so the dynamic import fails ("Failed to fetch dynamically imported module"). The Layout boundary (08.2) shows its error card. Its "Try Again" cannot recover, because `React.lazy` caches a rejected import; "Reload Page" does. This is a known cost of lazy routes and is accepted. An automatic reload on `vite:preloadError` would be a small `main.tsx` change, which is outside this cluster (see Out of scope).
+- **Stale tabs after a deploy.** Chunk names are content-hashed and served `immutable`. A browser tab opened before a deploy that then navigates to a not-yet-visited route asks for an old chunk name, which no longer exists. `vercel.json` rewrites that URL to `/index.html`, so the dynamic import fails ("Failed to fetch dynamically imported module"). The Layout boundary (08.2) shows its error card. Its "Try Again" cannot recover, because `React.lazy` caches a rejected import; "Reload Page" does. Step 3 (added 2026-10-16) now covers this case. The guarded automatic reload on `vite:preloadError` recovers the tab, and excluding `/assets/` from the rewrite stops `index.html` being cached `immutable` under a chunk URL. Rollback of Step 3 is a plain revert: the app falls back to the error card, and Vercel's rewrite goes back to swallowing missing assets.
 - **`LoginPage` is lazy too, as the cluster definition says.** The first visit to `/login` now costs one extra round trip (entry chunk, then the small login chunk, with the firebase chunk preloaded in parallel). The login chunk is small and Vite preloads its dependencies, so the net first-load cost is still far lower than the 420 kB gzip it replaces. If a measurement ever shows otherwise, making `LoginPage` a static import again is a one-line revert of that line in Step 1 and does not affect Step 2.
 - **Leaflet CSS now sits after `index.css` in the cascade.** Safe today for the reasons in Step 2's edge cases. If a future rule in `index.css` targets an element Leaflet also styles (`img`, `a`, `button` inside `.leaflet-container`), it will lose to Leaflet's rule; scope it with `:not(.leaflet-container …)` as 10.7 does.
 - **The `/dashboard` route still loads Leaflet and recharts**, because it shows a mini-map and charts. That matches the finding ("recharts only for /dashboard and /analytics, Leaflet only for /dashboard and /map"). Splitting the mini-map out of the dashboard chunk is out of scope.
@@ -410,9 +524,10 @@ Add one line stating whether the ">500 kB" warning remains and for which chunk. 
 ## Out of scope
 
 - Preloading or prefetching the next page (for example prefetching the dashboard chunk after a successful sign-in, or on link hover).
-- A `vite:preloadError` listener or a `lazyWithRetry` wrapper to recover automatically from stale-tab chunk failures (it belongs in `main.tsx` with the 08.2 root boundary).
+- A `lazyWithRetry` wrapper. Step 3's one-time page reload on `vite:preloadError` is the chosen recovery; per-import retries are not needed on top of it.
+- The rest of sec-5 (CSP, `frame-ancestors`/`X-Frame-Options`, `X-Content-Type-Options` headers). It stays in master §7. A CSP needs its own testing against Firebase Auth, Firestore and the Leaflet tile hosts.
 - Lazy-loading the dashboard mini-map or individual charts inside their pages, or `import()` of Leaflet plugins on demand.
-- A separate `react`/`react-dom`/`react-router` vendor chunk, a `radix-ui` or `date-fns` chunk, and `rollup-plugin-visualizer` or any other bundle analyzer (no dependency may be added).
+- A separate `react-router` vendor chunk. (`react`, `react-dom`, `scheduler` and `clsx` DO get the small `vendor-core` group: without it Rollup drags them into the Leaflet and recharts chunks. Corrected 2026-10-16 by a real build of the full post-playbook tree.) Also out of scope: a `radix-ui` or `date-fns` chunk, and `rollup-plugin-visualizer` or any other bundle analyzer (no dependency may be added).
 - Raising or silencing `build.chunkSizeWarningLimit`.
 - Removing unused dependencies (`@types/react-router-dom`, and moving `firebase-admin` to devDependencies, which is 03.3).
 - Tailwind or CSS purging, and the 92 kB entry CSS beyond moving Leaflet's rules out of it.
