@@ -2,6 +2,26 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Firestore security rules (shared with the mobile app)
+
+This dashboard shares the Firebase project `noise-pollution-mapper-9ad3d` with
+the Flutter app in the sibling repo `../noise_pollution_mapper`.
+
+- The canonical rules are `noise_pollution_mapper/firestore.rules`. The
+  `firestore.rules` and `storage.rules` in this repo are mirrors and must stay
+  identical modulo line endings. Edit the app copy first, then mirror it from
+  this repo with `tr -d '\r' < ../noise_pollution_mapper/firestore.rules > firestore.rules`.
+- Check for drift with `npm run check:rules`. It expects the app repo at
+  `../noise_pollution_mapper`; otherwise run
+  `node scripts/check-rules-drift.mjs <path-to-app-repo>`. It exits non-zero
+  on any difference.
+- Deploy rules only from the app repo, and only after the project owner has
+  seen and approved the full rules diff:
+  `firebase deploy --only firestore:rules,firestore:indexes`.
+- Never run `firebase deploy --only storage` (the project has no Storage
+  bucket, so that target fails), and never a bare `firebase deploy`. This repo
+  has no `firebase.json` on purpose: never deploy rules from here.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
