@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { FLUTTER_THEME_COLORS } from '@/utils/themeConstants';
 import { cn } from '@/lib/utils';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -20,6 +21,7 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, signOut, isAuthenticated } = useAuth();
   const { isDarkMode, theme, setTheme, primaryColor, setPrimaryColor } = useTheme();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Start closed on mobile
@@ -275,9 +277,13 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </header>
 
-        {/* Content Area */}
+        {/* Content Area. sec-1: a page that throws while rendering shows the
+            boundary's notice here while the header and sidebar keep working.
+            Keyed by path, so navigating to another page clears the error. */}
         <main className="flex-1 overflow-auto p-6">
-          {children}
+          <ErrorBoundary key={location.pathname}>
+            {children}
+          </ErrorBoundary>
         </main>
       </div>
     </div>

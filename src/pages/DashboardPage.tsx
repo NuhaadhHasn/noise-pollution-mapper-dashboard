@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useMemo } from 'react';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { CardBoundary, ErrorBoundary } from '@/components/ErrorBoundary';
 import { MapComponent } from '@/components/map/MapContainer';
 import { NoiseMarkers } from '@/components/map/NoiseMarkers';
 import MarkerClusterGroup from '@/components/map/MarkerClusterGroup';
@@ -72,7 +72,9 @@ export default function DashboardPage() {
       {isLoading ? (
         <StatsCardsSkeleton />
       ) : hasData ? (
-        <StatsCards />
+        <CardBoundary label="Summary statistics">
+          <StatsCards />
+        </CardBoundary>
       ) : error ? (
         <EmptyState
           variant="error"
@@ -184,12 +186,18 @@ export default function DashboardPage() {
         ) : hasData ? (
           <>
             {/* Noise Trend Chart (Full Width) */}
-            <NoiseTrendChart />
+            <CardBoundary label="Noise trend chart">
+              <NoiseTrendChart />
+            </CardBoundary>
 
             {/* Category and Sound Type Charts (Side by Side) */}
             <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
-              <CategoryChart />
-              <SoundTypeChart />
+              <CardBoundary label="Category chart">
+                <CategoryChart />
+              </CardBoundary>
+              <CardBoundary label="Sound type chart">
+                <SoundTypeChart />
+              </CardBoundary>
             </div>
           </>
         ) : (

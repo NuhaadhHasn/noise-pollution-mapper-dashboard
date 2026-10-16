@@ -8,6 +8,7 @@ import { NoiseTrendChart } from '@/components/analytics/NoiseTrendChart';
 import { CategoryChart } from '@/components/analytics/CategoryChart';
 import { SoundTypeChart } from '@/components/analytics/SoundTypeChart';
 import { DataTable } from '@/components/analytics/DataTable';
+import { CardBoundary } from '@/components/ErrorBoundary';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 import { exportToCSV, exportToJSON } from '@/utils/exportHelpers';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
@@ -87,7 +88,9 @@ export default function AnalyticsPage() {
       )}
 
       {/* Stats Cards with Real Data (a skeleton while the readings load) */}
-      <StatsCards />
+      <CardBoundary label="Summary statistics">
+        <StatsCards />
+      </CardBoundary>
 
       {/* Marker Count Info */}
       <div
@@ -126,12 +129,18 @@ export default function AnalyticsPage() {
       {/* Analytics Section - REAL CHARTS */}
       <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-6">
         {/* Noise Trend Chart (Full Width) */}
-        <NoiseTrendChart />
+        <CardBoundary label="Noise trend chart">
+          <NoiseTrendChart />
+        </CardBoundary>
 
         {/* Category and Sound Type Charts (Side by Side) */}
         <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
-          <CategoryChart />
-          <SoundTypeChart />
+          <CardBoundary label="Category chart">
+            <CategoryChart />
+          </CardBoundary>
+          <CardBoundary label="Sound type chart">
+            <SoundTypeChart />
+          </CardBoundary>
         </div>
 
         {/* Export Buttons */}
@@ -184,7 +193,13 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Data Table (a skeleton while the readings load, never a false "No data") */}
-          {loading ? <ChartSkeleton /> : <DataTable data={readings} />}
+          {loading ? (
+            <ChartSkeleton />
+          ) : (
+            <CardBoundary label="Readings table">
+              <DataTable data={readings} />
+            </CardBoundary>
+          )}
         </div>
       </div>
     </div>

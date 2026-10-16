@@ -1,9 +1,17 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCcw, Bug } from 'lucide-react';
 
+interface FallbackRenderProps {
+  error: Error;
+  /** Clear the error and render the children again. */
+  reset: () => void;
+}
+
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  /** Render the fallback from the caught error. Takes precedence over `fallback`. */
+  fallbackRender?: (props: FallbackRenderProps) => ReactNode;
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
 }
 
@@ -37,6 +45,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      if (this.props.fallbackRender && this.state.error) {
+        return this.props.fallbackRender({ error: this.state.error, reset: this.handleReset });
+      }
       if (this.props.fallback) {
         return this.props.fallback;
       }
@@ -88,6 +99,52 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return this.props.children;
   }
+}
+
+interface CardBoundaryProps {
+  /** Names the card in the fallback, for example "Category chart". */
+  label: string;
+  children: ReactNode;
+}
+
+/**
+ * sec-1: a per-card boundary. A card that throws while rendering (for example
+ * on a malformed reading) is replaced by this compact notice, and the rest of
+ * the page keeps working. "Try again" renders the card once more.
+ */
+export function CardBoundary({ label, children }: CardBoundaryProps) {
+  return (
+    <ErrorBoundary
+      fallbackRender={({ reset }) => (
+        <div
+          role="alert"
+          className="p-4 sm:p-6 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-red-900 dark:text-red-100">
+                {label} could not be displayed
+              </p>
+              <p className="text-xs mt-1 text-red-800 dark:text-red-200">
+                Some of the data could not be shown here. The rest of the page still works.
+              </p>
+              <button
+                type="button"
+                onClick={reset}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-300 dark:border-red-700 text-xs font-medium text-red-800 dark:text-red-200 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+              >
+                <RefreshCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    >
+      {children}
+    </ErrorBoundary>
+  );
 }
 
 export default ErrorBoundary;

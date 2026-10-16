@@ -1,5 +1,4 @@
 import { AlertTriangle, RefreshCcw, Home, Bug } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 
 interface GlobalErrorPageProps {
   error?: Error;
@@ -7,15 +6,18 @@ interface GlobalErrorPageProps {
   onReset?: () => void;
 }
 
+/**
+ * Full-page fallback of the root ErrorBoundary in main.tsx (sec-1). It renders
+ * OUTSIDE BrowserRouter and every provider, so it must not use router hooks or
+ * context (master §4.10): "Go Home" is a full page load.
+ */
 export function GlobalErrorPage({ error, errorInfo, onReset }: GlobalErrorPageProps) {
-  const navigate = useNavigate();
-
   const handleReload = () => {
     window.location.reload();
   };
 
   const handleGoHome = () => {
-    navigate('/dashboard');
+    window.location.assign('/dashboard');
   };
 
   return (
@@ -33,8 +35,8 @@ export function GlobalErrorPage({ error, errorInfo, onReset }: GlobalErrorPagePr
 
         {/* Description */}
         <p className="text-center text-gray-600 dark:text-gray-400 mb-6">
-          We encountered an unexpected error. Don't worry, our team has been notified
-          and we're working to fix it.
+          The dashboard hit an unexpected error and had to stop. Reload the page
+          to try again. No data was changed: the dashboard only reads it.
         </p>
 
         {/* Error Details */}
