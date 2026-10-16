@@ -7,56 +7,31 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { DATE_PRESETS, type DatePresetId } from '@/lib/mapFilters';
 
 interface DateRangeFilterProps {
-  onDateRangeChange?: (range: { start: Date; end: Date } | null) => void;
+  /** The active preset. MapPage owns it, so this control always matches the map (bug-6). */
+  value: DatePresetId;
+  onChange: (preset: DatePresetId) => void;
 }
-
-interface DateRangeOption {
-  label: string;
-  days: number | null; // null = all time
-}
-
-const DATE_RANGE_OPTIONS: DateRangeOption[] = [
-  { label: 'Last 7 days', days: 7 },
-  { label: 'Last 30 days', days: 30 },
-  { label: 'Last 90 days', days: 90 },
-  { label: 'All time', days: null },
-];
 
 /**
  * DateRangeFilter - Filter readings by date range
- * 
+ *
  * Features:
- * - Preset options (7/30/90 days, All time)
- * - Clear visual indication of selected range
+ * - Preset options (7/30/90 days, All time) from src/lib/mapFilters.ts
+ * - Controlled: no selection of its own, so closing and reopening the filter
+ *   panel can never show a different range from the one the map applies
  * - Works with cached data (no extra Firestore reads)
  */
-export function DateRangeFilter({ onDateRangeChange }: DateRangeFilterProps) {
+export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
   const { isDarkMode } = useTheme();
-  const [selectedOption, setSelectedOption] = useState<DateRangeOption>(DATE_RANGE_OPTIONS[3]); // Default: All time
   const [isOpen, setIsOpen] = useState(false);
+  const selected = DATE_PRESETS.find((preset) => preset.id === value);
 
-  function handleSelect(option: DateRangeOption) {
-    setSelectedOption(option);
+  function handleSelect(id: DatePresetId) {
     setIsOpen(false);
-    
-    if (onDateRangeChange) {
-      if (option.days === null) {
-        // All time - no filter
-        onDateRangeChange(null);
-      } else {
-        // Calculate date range
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - option.days);
-        
-        onDateRangeChange({
-          start: startDate,
-          end: endDate,
-        });
-      }
-    }
+    onChange(id);
   }
 
   return (
@@ -65,28 +40,26 @@ export function DateRangeFilter({ onDateRangeChange }: DateRangeFilterProps) {
         <Button
           variant="outline"
           className={`w-full justify-start text-left font-normal ${
-            !selectedOption && 'text-muted-foreground'
-          } ${
             isDarkMode
               ? 'border-gray-600 text-gray-300 hover:bg-gray-800'
               : ''
           }`}
         >
           <Calendar className="mr-2 h-4 w-4" />
-          {selectedOption ? selectedOption.label : 'Select date range'}
+          {selected ? selected.label : 'Select date range'}
         </Button>
       </PopoverTrigger>
-      
+
       <PopoverContent className={`w-56 z-[9999] ${
         isDarkMode ? 'bg-[#2D2640] border-gray-700' : 'bg-white'
       }`}>
         <div className="space-y-1">
-          {DATE_RANGE_OPTIONS.map((option) => (
+          {DATE_PRESETS.map((preset) => (
             <Button
-              key={option.label}
+              key={preset.id}
               variant="ghost"
               className={`w-full justify-start font-normal ${
-                selectedOption?.label === option.label
+                preset.id === value
                   ? isDarkMode
                     ? 'bg-gray-700 text-white'
                     : 'bg-gray-200 text-gray-900'
@@ -94,9 +67,9 @@ export function DateRangeFilter({ onDateRangeChange }: DateRangeFilterProps) {
                     ? 'text-gray-300 hover:bg-gray-800'
                     : 'text-gray-700 hover:bg-gray-100'
               }`}
-              onClick={() => handleSelect(option)}
+              onClick={() => handleSelect(preset.id)}
             >
-              {option.label}
+              {preset.label}
             </Button>
           ))}
         </div>

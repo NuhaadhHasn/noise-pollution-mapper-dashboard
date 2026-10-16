@@ -13,7 +13,7 @@ import { MapPin, Search, Crosshair, Filter, ArrowLeft, Layers, RefreshCw } from 
 import { useTheme } from '@/contexts/ThemeContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
-import { filterReadings } from '@/lib/mapFilters';
+import { DEFAULT_DATE_PRESET, filterReadings, presetSummary, type DatePresetId } from '@/lib/mapFilters';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 import {
   Dialog,
@@ -31,7 +31,7 @@ export default function MapPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showAllUsers, setShowAllUsers] = useState(false); // Phase 1: User filter
-  const [dateRange, setDateRange] = useState<{ start: Date; end: Date } | null>(null); // Phase 3: Date filter (null = all time)
+  const [datePreset, setDatePreset] = useState<DatePresetId>(DEFAULT_DATE_PRESET); // Phase 3: Date filter (a preset id; the window is computed at filter time)
   const [isRefreshing, setIsRefreshing] = useState(false); // Force refresh state
   const [confirmFullSyncOpen, setConfirmFullSyncOpen] = useState(false);
   const [fullSyncNotice, setFullSyncNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
@@ -43,8 +43,8 @@ export default function MapPage() {
   // can never disagree (bug-2, bug-9). The deps are the provider's readings array
   // plus primitives, so the memo recomputes only when one of them changes.
   const filteredReadings = useMemo(
-    () => filterReadings(readings, { userId, showAllUsers, range: dateRange }),
-    [readings, userId, showAllUsers, dateRange],
+    () => filterReadings(readings, { userId, showAllUsers, preset: datePreset }),
+    [readings, userId, showAllUsers, datePreset],
   );
 
   // "Fetch All Readings": re-download everything through the provider, which
@@ -232,15 +232,11 @@ export default function MapPage() {
             }`}>
               Date Range
             </label>
-            <DateRangeFilter
-              onDateRangeChange={setDateRange}
-            />
+            <DateRangeFilter value={datePreset} onChange={setDatePreset} />
             <p className={`text-xs mt-2 ${
               isDarkMode ? 'text-gray-500' : 'text-gray-400'
             }`}>
-              {dateRange
-                ? `From ${dateRange.start.toLocaleDateString()} to ${dateRange.end.toLocaleDateString()}`
-                : 'Showing all dates'}
+              {presetSummary(datePreset)}
             </p>
           </div>
 

@@ -9,11 +9,50 @@
 import { getCoordinates, getReadingDate } from '@/lib/readings';
 import type { CoordinateFields, DateFields } from '@/lib/readings';
 import { categoryOf } from '@/lib/categories';
+import { endOfDay, startOfDay, subDays } from 'date-fns';
 
 /** An inclusive window between two real instants. */
 export interface DateRange {
   start: Date;
   end: Date;
+}
+
+export type DatePresetId = 'all' | '7d' | '30d' | '90d';
+
+export interface DatePreset {
+  id: DatePresetId;
+  label: string;
+  /** Days back from today; null means all time. */
+  days: number | null;
+}
+
+/** The presets in the order the filter lists them. */
+export const DATE_PRESETS: readonly DatePreset[] = [
+  { id: '7d', label: 'Last 7 days', days: 7 },
+  { id: '30d', label: 'Last 30 days', days: 30 },
+  { id: '90d', label: 'Last 90 days', days: 90 },
+  { id: 'all', label: 'All time', days: null },
+];
+
+export const DEFAULT_DATE_PRESET: DatePresetId = 'all';
+
+/**
+ * The window a preset means at `now`: from the START of the day `days` days
+ * ago to the END of today (browser-local days; bug-12 owns Asia/Colombo).
+ * Computed at filter time, never at click time, so readings that arrive
+ * after the selection are inside the window (bug-8). Null means all time.
+ */
+export function presetRange(id: DatePresetId, now: Date): DateRange | null {
+  const preset = DATE_PRESETS.find((candidate) => candidate.id === id);
+  if (!preset || preset.days === null) return null;
+  return { start: startOfDay(subDays(now, preset.days)), end: endOfDay(now) };
+}
+
+/** The caption under the date control: the window in plain dates. */
+export function presetSummary(id: DatePresetId, now: Date = new Date()): string {
+  const range = presetRange(id, now);
+  if (!range) return 'Showing all dates';
+  return `From ${range.start.toLocaleDateString()} to ${range.end.toLocaleDateString()}`;
 }
 
 /** The reading fields the map filter looks at. NoiseReading satisfies it structurally. */
@@ -27,8 +66,8 @@ export interface ReadingFilters {
   /** The signed-in user's uid. Only consulted while showAllUsers is false. */
   userId: string;
   showAllUsers: boolean;
-  /** Inclusive date window; null means all time. */
-  range: DateRange | null;
+  /** Preset id; the window is computed from it at filter time (bug-6, bug-8). */
+  preset: DatePresetId;
   /** Optional inclusive dB window. No UI sets it yet (ux-6). */
   dbRange?: { min: number; max: number };
   /** Optional canonical category names (categories.ts). No UI sets it yet (ux-6). */
@@ -43,9 +82,11 @@ export interface ReadingFilters {
 export function filterReadings<T extends FilterableReading>(
   readings: readonly T[],
   filters: ReadingFilters,
+  now: Date = new Date(),
 ): T[] {
-  const { userId, showAllUsers, range, dbRange, categories } = filters;
+  const { userId, showAllUsers, preset, dbRange, categories } = filters;
   const wanted = categories && categories.length > 0 ? categories : null;
+  const range = presetRange(preset, now);
   const startMs = range ? range.start.getTime() : null;
   const endMs = range ? range.end.getTime() : null;
 

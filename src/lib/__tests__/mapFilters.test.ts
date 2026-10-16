@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterReadings } from '@/lib/mapFilters';
+import { filterReadings, presetRange, presetSummary } from '@/lib/mapFilters';
 import type { FilterableReading, ReadingFilters } from '@/lib/mapFilters';
 
 interface TestReading extends FilterableReading {
@@ -18,7 +18,7 @@ function reading(overrides: Partial<TestReading> = {}): TestReading {
   };
 }
 
-const ALL: ReadingFilters = { userId: 'u1', showAllUsers: true, range: null };
+const ALL: ReadingFilters = { userId: 'u1', showAllUsers: true, preset: 'all' };
 
 function ids(list: TestReading[]): string[] {
   return list.map((item) => item.id);
@@ -90,40 +90,76 @@ describe('filterReadings', () => {
   });
 });
 
-describe('filterReadings date range', () => {
-  const range = { start: new Date(2026, 9, 10), end: new Date(2026, 9, 16, 23, 59, 59, 999) };
-  const inRange = new Date(2026, 9, 12, 12, 0).getTime();
-  const outOfRange = new Date(2026, 8, 1, 12, 0).getTime();
+// Friday 16 Oct 2026, 15:30 local time.
+const NOW = new Date(2026, 9, 16, 15, 30);
 
-  it('lets the server timestamp decide, not the client-clock createdAt (bug-8)', () => {
-    const list = [
-      reading({ id: 'server-in', timestamp: inRange, createdAt: outOfRange }),
-      reading({ id: 'server-out', timestamp: outOfRange, createdAt: inRange }),
-    ];
-    expect(ids(filterReadings(list, { ...ALL, range }))).toEqual(['server-in']);
+describe('presetRange', () => {
+  it('is null for all time and for an unknown id', () => {
+    expect(presetRange('all', NOW)).toBeNull();
+    expect(presetRange('bogus' as never, NOW)).toBeNull();
   });
 
-  it('falls back to createdAt only when the timestamp is missing', () => {
-    const list = [
-      reading({ id: 'fallback', timestamp: null, createdAt: inRange }),
-      reading({ id: 'nothing', timestamp: null }),
-    ];
-    expect(ids(filterReadings(list, { ...ALL, range }))).toEqual(['fallback']);
+  it('runs from the start of the day N days ago to the end of today (bug-8)', () => {
+    const range = presetRange('7d', NOW);
+    expect(range?.start.getTime()).toBe(new Date(2026, 9, 9, 0, 0, 0, 0).getTime());
+    expect(range?.end.getTime()).toBe(new Date(2026, 9, 16, 23, 59, 59, 999).getTime());
   });
 
-  it('drops a reading with no date once a range is set, and keeps it for all time', () => {
+  it('covers 30 and 90 days back', () => {
+    expect(presetRange('30d', NOW)?.start.getTime()).toBe(new Date(2026, 8, 16).getTime());
+    expect(presetRange('90d', NOW)?.start.getTime()).toBe(new Date(2026, 6, 18).getTime());
+  });
+});
+
+describe('filterReadings with a date preset', () => {
+  const preset = { ...ALL, preset: '7d' as const };
+
+  it('keeps the whole oldest day and drops the day before it', () => {
+    const list = [
+      reading({ id: 'first-ms', timestamp: new Date(2026, 9, 9, 0, 0, 0, 0).getTime() }),
+      reading({ id: 'too-old', timestamp: new Date(2026, 9, 8, 23, 59, 59, 999).getTime() }),
+    ];
+    expect(ids(filterReadings(list, preset, NOW))).toEqual(['first-ms']);
+  });
+
+  it('does not hide a reading that arrives later today (end of today, not click time)', () => {
+    const later = reading({ id: 'later', timestamp: new Date(2026, 9, 16, 23, 0).getTime() });
+    const tomorrow = reading({ id: 'tomorrow', timestamp: new Date(2026, 9, 17, 0, 0).getTime() });
+    expect(ids(filterReadings([later, tomorrow], preset, NOW))).toEqual(['later']);
+  });
+
+  it('recomputes the window from the clock it is given, so a later run sees newer readings', () => {
+    const newest = reading({ id: 'newest', timestamp: new Date(2026, 9, 20, 9, 0).getTime() });
+    expect(filterReadings([newest], preset, NOW)).toEqual([]);
+    expect(ids(filterReadings([newest], preset, new Date(2026, 9, 20, 10, 0)))).toEqual(['newest']);
+  });
+
+  it('lets the server timestamp decide over the client-clock createdAt (bug-8, part 1 kept)', () => {
+    const inWindow = new Date(2026, 9, 12, 12, 0).getTime();
+    const outOfWindow = new Date(2026, 8, 1, 12, 0).getTime();
+    const list = [
+      reading({ id: 'server-in', timestamp: inWindow, createdAt: outOfWindow }),
+      reading({ id: 'server-out', timestamp: outOfWindow, createdAt: inWindow }),
+      reading({ id: 'fallback', timestamp: null, createdAt: inWindow }),
+      reading({ id: 'undated', timestamp: null }),
+    ];
+    expect(ids(filterReadings(list, preset, NOW))).toEqual(['server-in', 'fallback']);
+  });
+
+  it('keeps undated readings for all time', () => {
     const list = [reading({ id: 'undated', timestamp: null })];
-    expect(filterReadings(list, { ...ALL, range })).toEqual([]);
-    expect(ids(filterReadings(list, ALL))).toEqual(['undated']);
+    expect(ids(filterReadings(list, ALL, NOW))).toEqual(['undated']);
+  });
+});
+
+describe('presetSummary', () => {
+  it('says all dates for all time', () => {
+    expect(presetSummary('all', NOW)).toBe('Showing all dates');
   });
 
-  it('includes both bounds', () => {
-    const list = [
-      reading({ id: 'start', timestamp: range.start.getTime() }),
-      reading({ id: 'end', timestamp: range.end.getTime() }),
-      reading({ id: 'before', timestamp: range.start.getTime() - 1 }),
-      reading({ id: 'after', timestamp: range.end.getTime() + 1 }),
-    ];
-    expect(ids(filterReadings(list, { ...ALL, range }))).toEqual(['start', 'end']);
+  it('names the window in local dates', () => {
+    expect(presetSummary('7d', NOW)).toBe(
+      `From ${new Date(2026, 9, 9).toLocaleDateString()} to ${new Date(2026, 9, 16, 23, 59, 59, 999).toLocaleDateString()}`,
+    );
   });
 });
