@@ -1,4 +1,4 @@
-import { createPathComponent, extendContext } from '@react-leaflet/core';
+import { createPathComponent, extendContext, type LeafletContextInterface } from '@react-leaflet/core';
 import L from 'leaflet';
 import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -22,7 +22,7 @@ const DEFAULT_OPTIONS: L.MarkerClusterGroupOptions = {
   removeOutsideVisibleBounds: true,
 };
 
-function createCluster(props: MarkerClusterGroupProps, context: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+function createCluster(props: MarkerClusterGroupProps, context: LeafletContextInterface) {
   const { options } = props;
   // chunkedLoading is forced OFF: markercluster's own chunk loop cannot be
   // cancelled, so replacing the markers mid-load would re-add stale ones or throw
