@@ -2,10 +2,35 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { Database, Volume2, TrendingUp, Users } from 'lucide-react';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { StatsCardsSkeleton } from '@/components/analytics/StatsCardsSkeleton';
 
 export function StatsCards() {
   const { isDarkMode, getCardColor } = useTheme();
-  const { readings } = useSyncedReadings();
+  const { readings, loading, error } = useSyncedReadings();
+
+  // ux-1: a skeleton while the readings load; "No data available" only after a
+  // load that really found no readings, never while loading or after a failure.
+  if (loading) {
+    return <StatsCardsSkeleton />;
+  }
+
+  if (readings.length === 0) {
+    return (
+      <div
+        className="p-4 sm:p-6 rounded-lg shadow-lg transition-colors"
+        style={{ backgroundColor: getCardColor() }}
+      >
+        <p className={cn('text-sm font-medium', isDarkMode ? 'text-gray-300' : 'text-gray-700')}>
+          {error ? 'Readings could not be loaded' : 'No data available'}
+        </p>
+        <p className="text-xs mt-1 text-gray-500">
+          {error
+            ? 'Check your connection, then press Retry.'
+            : 'No readings have been uploaded from the mobile app yet.'}
+        </p>
+      </div>
+    );
+  }
 
   // Calculate statistics from synced readings
   const totalReadings = readings.length;

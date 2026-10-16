@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 import { getReadingDate } from '@/lib/readings';
 
 type TimeGranularity = 'hour' | 'day' | 'week' | 'month';
@@ -19,7 +20,7 @@ interface TrendDataPoint {
 export function NoiseTrendChart() {
   const { isDarkMode } = useTheme();
   const [granularity, setGranularity] = useState<TimeGranularity>('day');
-  const { readings } = useSyncedReadings();
+  const { readings, loading, error } = useSyncedReadings();
 
   // Group readings by time granularity
   const groupedData = useMemo(() => {
@@ -118,6 +119,10 @@ export function NoiseTrendChart() {
     }
   };
 
+  if (loading) {
+    return <ChartSkeleton showLegend />;
+  }
+
   if (groupedData.length === 0) {
     return (
       <div className={cn(
@@ -127,10 +132,12 @@ export function NoiseTrendChart() {
         <div className="flex items-center justify-center h-64 sm:h-80">
           <div className="text-center">
             <p className={cn("text-sm font-medium", isDarkMode ? "text-gray-300" : "text-gray-700")}>
-              No data available
+              {error ? 'Readings could not be loaded' : 'No data available'}
             </p>
             <p className={cn("text-xs mt-1", isDarkMode ? "text-gray-500" : "text-gray-500")}>
-              Start recording noise to see trends
+              {error
+                ? 'Trends appear once the readings have been downloaded.'
+                : 'No readings have been uploaded from the mobile app yet.'}
             </p>
           </div>
         </div>

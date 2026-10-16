@@ -1,6 +1,6 @@
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
-import { MapPin, ExternalLink, Download, FileJson, Printer } from 'lucide-react';
+import { MapPin, ExternalLink, Download, FileJson, Printer, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
@@ -9,6 +9,7 @@ import { NoiseTrendChart } from '@/components/analytics/NoiseTrendChart';
 import { CategoryChart } from '@/components/analytics/CategoryChart';
 import { SoundTypeChart } from '@/components/analytics/SoundTypeChart';
 import { DataTable } from '@/components/analytics/DataTable';
+import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 import { exportToCSV, exportToJSON } from '@/utils/exportHelpers';
 import { fetchAllUsers, type UserInfo } from '@/services/userService';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
@@ -18,8 +19,9 @@ export default function AnalyticsPage() {
   const { isDarkMode } = useTheme();
   const [userMap, setUserMap] = useState<Map<string, UserInfo>>(new Map());
 
-  // Use IndexedDB-synced readings (0 Firebase reads on initial load)
-  const { readings } = useSyncedReadings();
+  // The shared, IndexedDB-cached readings (ReadingsProvider). `loading` covers
+  // the first cache read or first download; `error` is the last failed sync.
+  const { readings, loading, syncing, error, refresh } = useSyncedReadings();
   const markerCount = readings.length;
 
   // Fetch users for email lookup
@@ -59,7 +61,38 @@ export default function AnalyticsPage() {
         </div>
       </header>
 
-      {/* Stats Cards with Real Data */}
+      {/* A failed sync is said out loud, with Retry, never shown as "no data" (ux-1) */}
+      {error && (
+        <div
+          role="alert"
+          className={cn(
+            'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border',
+            isDarkMode ? 'bg-red-950/40 border-red-900 text-red-200' : 'bg-red-50 border-red-200 text-red-800'
+          )}
+        >
+          <div>
+            <p className="text-sm font-semibold">Could not sync readings</p>
+            <p className="text-xs mt-1">
+              {readings.length > 0
+                ? `Showing the ${readings.length.toLocaleString()} readings already cached in this browser.`
+                : 'No readings are cached in this browser yet.'}
+              {' '}({error.message})
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void refresh()}
+            disabled={syncing}
+            className="shrink-0"
+          >
+            <RefreshCw className={cn('w-3 h-3 mr-1', syncing && 'animate-spin')} />
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {/* Stats Cards with Real Data (a skeleton while the readings load) */}
       <StatsCards />
 
       {/* Marker Count Info */}
@@ -79,7 +112,9 @@ export default function AnalyticsPage() {
               "text-sm font-medium",
               isDarkMode ? "text-gray-300" : "text-gray-700"
             )}>
-              Analyzing {markerCount.toLocaleString()} noise readings
+              {loading
+                ? 'Loading readings...'
+                : `Analyzing ${markerCount.toLocaleString()} noise readings${syncing ? ' (syncing...)' : ''}`}
             </span>
           </div>
           <Button
@@ -149,8 +184,8 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Data Table */}
-          <DataTable data={readings} userMap={userMap} />
+          {/* Data Table (a skeleton while the readings load, never a false "No data") */}
+          {loading ? <ChartSkeleton /> : <DataTable data={readings} userMap={userMap} />}
         </div>
       </div>
     </div>

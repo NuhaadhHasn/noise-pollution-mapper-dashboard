@@ -3,6 +3,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 
 interface SoundTypeData {
   type: string;
@@ -20,7 +21,7 @@ const SOUND_TYPE_COLORS: Record<string, string> = {
 
 export function SoundTypeChart() {
   const { isDarkMode } = useTheme();
-  const { readings } = useSyncedReadings();
+  const { readings, loading, error } = useSyncedReadings();
   const [isMobile, setIsMobile] = useState(false);
 
   // Detect mobile based on window width
@@ -57,6 +58,10 @@ export function SoundTypeChart() {
     return result;
   }, [readings]);
 
+  if (loading) {
+    return <ChartSkeleton showLegend />;
+  }
+
   if (soundTypeData.length === 0) {
     return (
       <div className={cn(
@@ -66,10 +71,12 @@ export function SoundTypeChart() {
         <div className="flex items-center justify-center h-64 sm:h-80">
           <div className="text-center">
             <p className={cn("text-sm font-medium", isDarkMode ? "text-gray-300" : "text-gray-700")}>
-              No data available
+              {error ? 'Readings could not be loaded' : 'No data available'}
             </p>
             <p className={cn("text-xs mt-1", isDarkMode ? "text-gray-500" : "text-gray-500")}>
-              Start recording noise to see distribution
+              {error
+                ? 'Sound types appear once the readings have been downloaded.'
+                : 'No readings have been uploaded from the mobile app yet.'}
             </p>
           </div>
         </div>
