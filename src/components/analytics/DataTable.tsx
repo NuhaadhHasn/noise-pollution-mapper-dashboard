@@ -31,10 +31,44 @@ interface SortIconProps {
 
 function SortIcon({ field, sortField, sortDirection }: SortIconProps) {
   if (sortField !== field) return null;
-  return sortDirection === 'asc' ? (
-    <ChevronUp className="w-3 h-3 ml-1 inline" />
-  ) : (
-    <ChevronDown className="w-3 h-3 ml-1 inline" />
+  return (
+    <>
+      {sortDirection === 'asc' ? (
+        <ChevronUp className="w-3 h-3 ml-1 inline" aria-hidden="true" />
+      ) : (
+        <ChevronDown className="w-3 h-3 ml-1 inline" aria-hidden="true" />
+      )}
+      <span className="sr-only">
+        {sortDirection === 'asc' ? ', sorted ascending' : ', sorted descending'}
+      </span>
+    </>
+  );
+}
+
+interface SortableHeadProps extends SortIconProps {
+  label: string;
+  onSort: (field: SortField) => void;
+}
+
+/**
+ * A sortable column header: a real button inside the <th>, so it is in the tab
+ * order and works with Enter and Space. `aria-sort` on the <th> tells assistive
+ * technology which column is sorted and in which direction (a11y-2).
+ */
+function SortableHead({ field, label, sortField, sortDirection, onSort }: SortableHeadProps) {
+  const ariaSort =
+    sortField !== field ? 'none' : sortDirection === 'asc' ? 'ascending' : 'descending';
+  return (
+    <TableHead aria-sort={ariaSort}>
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className="sort-button -mx-1 inline-flex items-center rounded-sm px-1 py-1 font-medium hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {label}
+        <SortIcon field={field} sortField={sortField} sortDirection={sortDirection} />
+      </button>
+    </TableHead>
   );
 }
 
@@ -141,42 +175,12 @@ export function DataTable({ data }: DataTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => handleSort('timestamp')}
-              >
-                Timestamp <SortIcon field="timestamp" sortField={sortField} sortDirection={sortDirection} />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => handleSort('locationName')}
-              >
-                Location <SortIcon field="locationName" sortField={sortField} sortDirection={sortDirection} />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => handleSort('decibelLevel')}
-              >
-                Noise Level (dB) <SortIcon field="decibelLevel" sortField={sortField} sortDirection={sortDirection} />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => handleSort('soundCategory')}
-              >
-                Category <SortIcon field="soundCategory" sortField={sortField} sortDirection={sortDirection} />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => handleSort('soundType')}
-              >
-                Type <SortIcon field="soundType" sortField={sortField} sortDirection={sortDirection} />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => handleSort('confidence')}
-              >
-                Confidence <SortIcon field="confidence" sortField={sortField} sortDirection={sortDirection} />
-              </TableHead>
+              <SortableHead field="timestamp" label="Timestamp" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <SortableHead field="locationName" label="Location" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <SortableHead field="decibelLevel" label="Noise Level (dB)" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <SortableHead field="soundCategory" label="Category" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <SortableHead field="soundType" label="Type" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <SortableHead field="confidence" label="Confidence" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <TableHead>Contributor</TableHead>
             </TableRow>
           </TableHeader>

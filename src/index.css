@@ -215,6 +215,11 @@
   .no-print {
     display: none !important;
   }
+
+  /* The sortable table headers are buttons (a11y-2): keep their text in print. */
+  th .sort-button {
+    display: inline-flex !important;
+  }
   
   /* Show only the data table section */
   .data-export-section,
