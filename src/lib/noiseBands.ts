@@ -37,3 +37,13 @@ export function noiseBand(decibels: number): NoiseBand {
   if (decibels <= MODERATE_BAND_MAX_DB) return NOISE_BANDS.moderate;
   return NOISE_BANDS.high;
 }
+
+/**
+ * One-line disclosure for every place a dB number is shown as a finding: the
+ * stats row (07.3), the CSV header and JSON note (07.3), and the map legend
+ * (09.4 imports this same constant). It mirrors the app's own wording
+ * (APP lib/screens/dashboard_screen.dart:1015): the app has no reference-SPL
+ * calibration and no per-device profile, so absolute levels differ by phone.
+ */
+export const DB_CAVEAT =
+  'dB values are uncalibrated estimates from phone microphones; levels vary by device.';

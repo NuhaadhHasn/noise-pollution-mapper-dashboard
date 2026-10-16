@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { authorLabel } from '@/lib/authorLabel';
 import { categoryLabel, confidenceOf, confidencePercent } from '@/lib/categories';
 import { getCoordinates, getReadingDate } from '@/lib/readings';
-import { noiseBand } from '@/lib/noiseBands';
+import { DB_CAVEAT, noiseBand } from '@/lib/noiseBands';
 
 /**
  * Quote one CSV cell and neutralize spreadsheet formulas (sec-2).
@@ -55,7 +55,7 @@ export function buildCsv(data: NoiseReading[]): string {
     'Location',
     'Latitude',
     'Longitude',
-    'Noise Level (dB)',
+    'Noise Level (dB, uncalibrated estimate)',
     'Category',
     'Type',
     'Confidence (%)',
@@ -110,7 +110,8 @@ export function buildJsonExport(data: NoiseReading[], exportedAt: Date) {
       exportDate: format(exportedAt, 'yyyy-MM-dd HH:mm:ss'),
       totalRecords: data.length,
       source: 'Urban Noise Pollution Mapper',
-      version: '2.6.0'
+      version: '2.6.0',
+      note: DB_CAVEAT
     },
     readings: data.map(reading => ({
       id: reading.id,

@@ -2,6 +2,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { Database, Volume2, TrendingUp, Users } from 'lucide-react';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { DB_CAVEAT } from '@/lib/noiseBands';
 import { StatsCardsSkeleton } from '@/components/analytics/StatsCardsSkeleton';
 
 export function StatsCards() {
@@ -124,6 +125,16 @@ export function StatsCards() {
           {stats.activeContributors.toLocaleString()}
         </p>
       </div>
+
+      {/* Uncalibrated-dB disclosure (ux-3): one line under the stats row */}
+      <p
+        className={cn(
+          'col-span-full text-xs transition-colors',
+          isDarkMode ? 'text-gray-400' : 'text-gray-600'
+        )}
+      >
+        {DB_CAVEAT}
+      </p>
     </div>
   );
 }

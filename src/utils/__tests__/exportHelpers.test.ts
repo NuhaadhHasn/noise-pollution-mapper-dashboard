@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NoiseReading } from '@/types/NoiseReading';
+import { DB_CAVEAT } from '@/lib/noiseBands';
 import { buildCsv, buildJsonExport, csvCell, csvFixed } from '@/utils/exportHelpers';
 
 const HEADERS = [
@@ -7,7 +8,7 @@ const HEADERS = [
   'Location',
   'Latitude',
   'Longitude',
-  'Noise Level (dB)',
+  'Noise Level (dB, uncalibrated estimate)',
   'Category',
   'Type',
   'Confidence (%)',
@@ -250,6 +251,36 @@ describe('contributor label', () => {
     expect(json.readings[0].contributor).toBe('lo***@example.com');
     expect(json.readings[0].userId).toBe('uid1');
     expect(JSON.stringify(json)).not.toContain('lochana');
+  });
+});
+
+describe('uncalibrated-dB disclosure', () => {
+  it('states the caveat in the dB column header', () => {
+    expect(parseCsv(buildCsv([]))[0][4]).toBe('Noise Level (dB, uncalibrated estimate)');
+  });
+
+  it('quotes the header so its comma does not add a column', () => {
+    const csv = buildCsv([reading()]);
+    expect(csv.split('\n')[0]).toContain('"Noise Level (dB, uncalibrated estimate)"');
+    for (const row of parseCsv(csv)) {
+      expect(row).toHaveLength(9);
+    }
+  });
+
+  it('adds no comment row, which would break pandas.read_csv', () => {
+    const lines = buildCsv([reading()]).split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0].startsWith('#')).toBe(false);
+  });
+
+  it('carries the shared caveat in the JSON metadata note', () => {
+    expect(buildJsonExport([reading()], new Date()).metadata.note).toBe(DB_CAVEAT);
+  });
+
+  it('uses the exact shared wording', () => {
+    expect(DB_CAVEAT).toBe(
+      'dB values are uncalibrated estimates from phone microphones; levels vary by device.',
+    );
   });
 });
 
