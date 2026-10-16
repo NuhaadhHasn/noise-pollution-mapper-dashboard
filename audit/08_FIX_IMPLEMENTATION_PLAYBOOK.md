@@ -1061,7 +1061,7 @@ the full evidence is in the audit docs.
 - **DONE (`ac40704`)** **bug-12**: Trend buckets and CSV timestamps use browser-local time.
   Bucket in `Asia/Colombo` explicitly, and add an ISO-UTC timestamp column
   to the exports.
-- **DONE (`9b7a33f`, the new tracked DEPLOYMENT_GUIDE.md)** **build-1**: The untracked `DEPLOYMENT_GUIDE.md:229-248` embeds an
+- **DONE (`59c08aa`, the new tracked DEPLOYMENT_GUIDE.md)** **build-1**: The untracked `DEPLOYMENT_GUIDE.md:229-248` embeds an
   obsolete, weaker ruleset. Replace it with a pointer to
   `APP:firestore.rules` and the §2.3 deploy command.
 - **DONE (APP `decbe0c`, DASH `f2f8cc2`)** **build-2**: `APP:firebase.json` still declares a `storage` target, and
@@ -1098,7 +1098,7 @@ the full evidence is in the audit docs.
 
 **Parked engineering work:**
 
-- **STILL OPEN (needs an app release)** **App-side sync cursor (data-1, complete fix).**
+- **DONE in code 2026-10-16 (APP `d2f2779` rules + `4b826cd` writers; DASH `1a58715` rules + emulator tests 88/88, `9b5472f` DTO, `0e009d7` second delta query on `syncedAt`). Effective once the rules are deployed and the new app build is released — deploy order: rules → dashboard → app.** **App-side sync cursor (data-1, complete fix).**
   - Add `syncedAt: FieldValue.serverTimestamp()` to BOTH app writers
     (`firebase_service.dart` `_saveToFirebase`, `sync_service.dart`
     `_saveToFirebase`).

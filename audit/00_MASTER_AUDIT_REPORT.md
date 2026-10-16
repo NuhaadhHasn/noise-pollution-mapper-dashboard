@@ -252,7 +252,7 @@ Everything below shipped on 2026-10-16, the same day as the audit. Playbook refe
 
 **Still open**
 
-- **App-side sync cursor (data-1, complete fix).** It needs an app release that writes `syncedAt`, plus a rules whitelist update. The 24 h full replace stays as the backstop.
+- **App-side sync cursor (data-1, complete fix): implemented 2026-10-16** (APP `d2f2779`, `4b826cd`; DASH `1a58715`, `9b5472f`, `0e009d7`; rules emulator suite 88/88). It takes effect once the rules are deployed and the new app build is released (order: rules → dashboard → app). Old app builds keep working through the `timestamp` delta, and the 24 h full replace stays as the backstop.
 - **Owner actions.** Rotate and restrict keys per the app's `docs/SECURITY_ROTATION.md`, and enrol in Play App Signing.
 - **Classification.** Re-test with clean samples on a device (APP `audit/12_CLASSIFICATION_FIELD_TEST.md`).
 - **Not verified on device.** Recording duration, permission and donation flows.
