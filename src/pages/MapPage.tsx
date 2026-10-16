@@ -198,6 +198,41 @@ export default function MapPage() {
         </ErrorBoundary>
       </div>
 
+      {/* Empty state (ux-2): a real overlay that names the cause. It is never a marker. */}
+      {!loading && filteredReadings.length === 0 && (
+        <div className="absolute inset-0 z-[350] flex items-center justify-center p-4 pointer-events-none">
+          <div
+            role="status"
+            className={`pointer-events-auto max-w-sm rounded-lg shadow-lg p-4 text-center ${
+              isDarkMode ? 'bg-[#2D2640] text-white' : 'bg-white text-gray-900'
+            }`}
+          >
+            <p className="font-semibold mb-1">
+              {readings.length === 0
+                ? 'No readings have been synced yet'
+                : 'No readings match the current filters'}
+            </p>
+            <p className={`text-sm mb-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              {readings.length === 0
+                ? 'Readings appear here once the mobile app has uploaded them.'
+                : 'Nothing matches the current Data Source and Date Range filters.'}
+            </p>
+            {readings.length > 0 && (!showAllUsers || datePreset !== DEFAULT_DATE_PRESET) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setShowAllUsers(true);
+                  setDatePreset(DEFAULT_DATE_PRESET);
+                }}
+              >
+                Show all readings
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Filter Panel */}
       {showFilters && (
         <div className={`absolute top-20 left-4 w-80 z-[399] rounded-lg shadow-lg p-4 ${

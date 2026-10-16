@@ -93,7 +93,7 @@ export function UserFilterToggle({ showAllUsers, onFilterChange }: UserFilterTog
               isDarkMode ? 'text-gray-300' : 'text-gray-600'
             }`}>
               <p>
-                This will show noise readings from <strong>all users</strong> instead of just your own.
+                This will show noise readings from <strong>all contributors</strong> instead of just your own. They are already in this browser, so nothing is downloaded: this only changes which readings the map shows.
               </p>
               
               <p className={`text-sm ${

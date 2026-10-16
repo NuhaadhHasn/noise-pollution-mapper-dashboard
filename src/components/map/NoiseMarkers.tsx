@@ -1,4 +1,4 @@
-import { Marker, Popup, useMap } from 'react-leaflet';
+import { Marker, Popup } from 'react-leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { Icon } from 'leaflet';
 import type { NoiseReading } from '@/types/NoiseReading';
@@ -50,28 +50,12 @@ interface NoiseMarkersProps {
  * reports nothing to its parent.
  * - Color-coded by dB level
  * - A popup per marker
- * - An empty list shows the empty pin until Step 3 moves that message into an overlay
+ * - An empty list renders nothing: MapPage shows the filter-aware empty overlay (ux-2)
  */
 export function NoiseMarkers({ readings }: NoiseMarkersProps) {
-  const map = useMap();
-
-  // Show empty state message (as a popup at map center)
+  // Nothing to draw: MapPage explains why (ux-2). No marker is ever invented.
   if (readings.length === 0) {
-    return (
-      <Marker
-        position={map.getCenter() as LatLngExpression}
-        icon={createMarkerIcon('#9E9E9E')}
-      >
-        <Popup>
-          <div className="text-center p-2">
-            <p className="font-semibold mb-1">No noise readings yet</p>
-            <p className="text-sm text-gray-600">
-              Be the first to contribute data using our mobile app!
-            </p>
-          </div>
-        </Popup>
-      </Marker>
-    );
+    return null;
   }
 
   return (
