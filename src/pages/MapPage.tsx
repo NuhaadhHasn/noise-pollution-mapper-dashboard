@@ -16,7 +16,7 @@ import { MapPin, Search, Crosshair, Filter, ArrowLeft, Layers, RefreshCw, Loader
 import { useTheme } from '@/contexts/ThemeContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
-import { DEFAULT_DATE_PRESET, filterReadings, presetSummary, type DatePresetId } from '@/lib/mapFilters';
+import { DEFAULT_DATE_PRESET, filterReadings, partitionByBounds, presetSummary, type DatePresetId } from '@/lib/mapFilters';
 import { isWithinBounds } from '@/lib/mapBounds';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 import {
@@ -49,8 +49,11 @@ export default function MapPage() {
   // One filtered set feeds the markers, the heatmap and the badge, so the three
   // can never disagree (bug-2, bug-9). The deps are the provider's readings array
   // plus primitives, so the memo recomputes only when one of them changes.
-  const filteredReadings = useMemo(
-    () => filterReadings(readings, { userId, showAllUsers, preset: datePreset, searchQuery }),
+  // ux-13: the map is locked to the Sri Lanka box, so a reading outside it can
+  // never be reached. Only reachable readings reach the markers, the heatmap and
+  // the badge; the rest are counted in a note.
+  const { inBounds: filteredReadings, outsideCount } = useMemo(
+    () => partitionByBounds(filterReadings(readings, { userId, showAllUsers, preset: datePreset, searchQuery })),
     [readings, userId, showAllUsers, datePreset, searchQuery],
   );
   const isSearching = searchQuery.trim() !== '';
@@ -231,6 +234,13 @@ export default function MapPage() {
           <MapPin className="h-3.5 w-3.5" style={{ color: primaryColor }} />
           <span className="font-semibold text-sm">{filteredReadings.length} markers</span>
         </div>
+        {outsideCount > 0 && (
+          <p className={`mt-1 text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            {outsideCount === 1
+              ? '1 reading outside the map area is not shown'
+              : `${outsideCount.toLocaleString()} readings outside the map area are not shown`}
+          </p>
+        )}
       </div>
 
       {/* Legend: what the pin colours and the heat layer mean */}

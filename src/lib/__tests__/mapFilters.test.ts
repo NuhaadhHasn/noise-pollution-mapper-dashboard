@@ -3,6 +3,7 @@ import {
   buildHeatPoints,
   filterReadings,
   heatIntensity,
+  partitionByBounds,
   presetRange,
   presetSummary,
 } from '@/lib/mapFilters';
@@ -268,5 +269,39 @@ describe('buildHeatPoints', () => {
       reading({ id: 'c', decibelLevel: 'x' }),
     ]);
     expect(points).toEqual([]);
+  });
+});
+
+describe('partitionByBounds (ux-13)', () => {
+  it('keeps in-bounds readings and counts the ones outside the Sri Lanka box', () => {
+    const list = [
+      reading({ id: 'colombo' }),
+      reading({ id: 'edge', latitude: 5.9, longitude: 79.5 }),
+      reading({ id: 'emulator', latitude: 37.42, longitude: -122.08 }),
+      reading({ id: 'null-island', latitude: 0, longitude: 0 }),
+    ];
+    const { inBounds, outsideCount } = partitionByBounds(list);
+    expect(ids(inBounds)).toEqual(['colombo', 'edge']);
+    expect(outsideCount).toBe(2);
+  });
+
+  it('reports zero outside when every reading is inside', () => {
+    const { inBounds, outsideCount } = partitionByBounds([reading({ id: 'a' }), reading({ id: 'b' })]);
+    expect(ids(inBounds)).toEqual(['a', 'b']);
+    expect(outsideCount).toBe(0);
+  });
+
+  it('does not count a reading with no usable position as outside', () => {
+    const { inBounds, outsideCount } = partitionByBounds([reading({ id: 'none', latitude: undefined })]);
+    expect(inBounds).toEqual([]);
+    expect(outsideCount).toBe(0);
+  });
+
+  it('handles an empty list and leaves the input untouched', () => {
+    expect(partitionByBounds([])).toEqual({ inBounds: [], outsideCount: 0 });
+    const list = [reading({ id: 'a' }), reading({ id: 'far', latitude: 51.5, longitude: -0.12 })];
+    const copy = [...list];
+    partitionByBounds(list);
+    expect(list).toEqual(copy);
   });
 });

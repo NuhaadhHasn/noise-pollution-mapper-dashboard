@@ -9,6 +9,7 @@
 import { getCoordinates, getReadingDate } from '@/lib/readings';
 import type { CoordinateFields, DateFields } from '@/lib/readings';
 import { categoryOf } from '@/lib/categories';
+import { isWithinBounds } from '@/lib/mapBounds';
 import { endOfDay, startOfDay, subDays } from 'date-fns';
 
 /** An inclusive window between two real instants. */
@@ -121,6 +122,28 @@ export function filterReadings<T extends FilterableReading>(
     if (!showAllUsers && reading.userId !== userId) return false;
     return true;
   });
+}
+
+/**
+ * Splits readings into those inside the map's Sri Lanka maxBounds and a count
+ * of those outside (ux-13). The map is locked to that box, so a marker outside
+ * it can never be reached; MapPage feeds only `inBounds` to the markers, the
+ * heatmap and the badge, and shows `outsideCount` as a note. Readings with no
+ * usable position are not counted: filterReadings has already dropped them.
+ * The input is never mutated.
+ */
+export function partitionByBounds<T extends FilterableReading>(
+  readings: readonly T[],
+): { inBounds: T[]; outsideCount: number } {
+  const inBounds: T[] = [];
+  let outsideCount = 0;
+  for (const reading of readings) {
+    const coords = getCoordinates(reading);
+    if (!coords) continue;
+    if (isWithinBounds(coords.lat, coords.lng)) inBounds.push(reading);
+    else outsideCount += 1;
+  }
+  return { inBounds, outsideCount };
 }
 
 /** A reading at or above this dB is drawn at full heat. Same 0-120 dB scale as the app (heatmap_point.dart:65-70). */
