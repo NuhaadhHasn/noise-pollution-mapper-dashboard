@@ -5,12 +5,7 @@ import { Button } from '@/components/ui/button';
 import * as syncManager from '@/utils/syncManager';
 
 interface SyncStatusProps {
-  onSyncComplete?: (result: {
-    newCount: number;
-    updatedCount: number;
-    lastSync: Date;
-    totalReadings: number;
-  }) => void;
+  onSyncComplete?: (result: syncManager.SyncResult) => void;
 }
 
 /**

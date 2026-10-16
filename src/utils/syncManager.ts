@@ -1,29 +1,110 @@
 /**
- * Sync Manager - Handles delta sync between Firebase and IndexedDB
- * 
- * Features:
- * - Track last sync timestamp
- * - Fetch only new/updated readings (delta sync)
- * - Merge cached + new data
- * - Sync status tracking
+ * Sync Manager - keeps the IndexedDB readings cache in step with Firestore.
+ *
+ * Cursor (data-1): the delta sync is keyed on a SERVER-time watermark, the
+ * newest `timestamp` actually received from Firestore, never on the browser
+ * clock. Each delta re-queries OVERLAP_MS behind the watermark, so a write
+ * that became visible late is still fetched. IndexedDB put() is an
+ * idempotent upsert, so the overlap only re-writes rows.
+ *
+ * Single flight (perf-2): concurrent callers share one in-flight sync.
+ *
+ * Query shapes (project index rule): the full fetch
+ * `orderBy('timestamp', 'desc')` and the delta `where('timestamp', '>', ...)`.
+ * Never a greater-or-equal range, and never a query that needs another
+ * composite index.
  */
 
-import { collection, getDocs, limit, orderBy, query, Timestamp, where } from 'firebase/firestore';
-import type { Query } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  orderBy,
+  query,
+  Timestamp,
+  where,
+  type Query,
+} from 'firebase/firestore';
 import { db as firebaseDb } from '@/config/firebase';
 import * as localDb from '@/utils/db';
-import type { NoiseReading } from '@/types/NoiseReading';
 import { normalizeReading } from '@/lib/readings';
+import type { NoiseReading } from '@/types/NoiseReading';
 
-const LAST_SYNC_KEY = 'lastSyncTime';
-const FIRST_SYNC_DONE_KEY = 'firstSyncDone';
+/** Each delta re-queries this far behind the watermark (idempotent re-puts). */
+export const OVERLAP_MS = 10 * 60_000;
 
 /**
- * Maximum readings to fetch on first sync
- * Set to 0 to fetch ALL readings (no limit)
- * Set to any number > 0 to limit (e.g., 500)
+ * A capture `timestamp` more than this far ahead of the browser clock (a phone
+ * with a wrong clock) never moves the watermark, so one bad doc cannot stall
+ * the delta. The cap can only make the next delta re-read more, never less.
  */
-const MAX_INITIAL_READINGS = 0; // 0 = fetch ALL, >0 = limit to this number
+export const MAX_FUTURE_SKEW_MS = 24 * 3_600_000;
+
+/** sync_metadata key: newest server `timestamp` in the cache (epoch ms). */
+const WATERMARK_KEY = 'maxTimestampMs';
+/** sync_metadata key: wall-clock time of the last successful sync (epoch ms). Display only. */
+const LAST_SYNC_AT_KEY = 'lastSyncAt';
+/** Every sync_metadata key this module writes; clearSyncData() resets them all. */
+const SYNC_METADATA_KEYS = [WATERMARK_KEY, LAST_SYNC_AT_KEY];
+
+export interface SyncResult {
+  /** 'full': the whole collection was fetched. 'delta': only `timestamp >` (watermark - OVERLAP_MS). */
+  mode: 'full' | 'delta';
+  /** Docs the query returned and that were written to IndexedDB (a delta includes overlap re-writes). */
+  newCount: number;
+  /** Rows in the cache after the sync. */
+  totalReadings: number;
+  /** Wall-clock time the sync finished. Display only; never a query cursor. */
+  lastSync: Date;
+}
+
+async function readNumber(key: string): Promise<number | null> {
+  const value = await localDb.getSyncMetadata(key);
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** The delta cursor: newest server `timestamp` (epoch ms) in the cache, or null before the first fetch. */
+export function getWatermark(): Promise<number | null> {
+  return readNumber(WATERMARK_KEY);
+}
+
+/**
+ * The watermark after storing `readings`: their newest `timestamp`, never
+ * lower than `previous` (pass null after a full fetch). Timestamps more than
+ * MAX_FUTURE_SKEW_MS ahead of `nowMs` are ignored. Pure, for tests.
+ */
+export function nextWatermark(
+  readings: NoiseReading[],
+  previous: number | null,
+  nowMs: number,
+): number | null {
+  const ceiling = nowMs + MAX_FUTURE_SKEW_MS;
+  let watermark = previous;
+  for (const reading of readings) {
+    const ts = reading.timestamp;
+    if (
+      typeof ts === 'number' &&
+      Number.isFinite(ts) &&
+      ts <= ceiling &&
+      (watermark === null || ts > watermark)
+    ) {
+      watermark = ts;
+    }
+  }
+  return watermark;
+}
+
+function fullQuery(): Query {
+  return query(collection(firebaseDb, 'noise_readings'), orderBy('timestamp', 'desc'));
+}
+
+function deltaQuery(watermarkMs: number): Query {
+  // Strictly '>' (project index rule): a single-field range served by the
+  // automatic index.
+  return query(
+    collection(firebaseDb, 'noise_readings'),
+    where('timestamp', '>', Timestamp.fromMillis(watermarkMs - OVERLAP_MS)),
+  );
+}
 
 /**
  * Run a noise_readings query and normalize every doc into the plain
@@ -53,134 +134,81 @@ export async function fetchReadings(q: Query): Promise<NoiseReading[]> {
   return readings;
 }
 
-/**
- * Get last sync time from IndexedDB
- */
-export async function getLastSyncTime(): Promise<Date | null> {
-  const lastSync = await localDb.getSyncMetadata(LAST_SYNC_KEY);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return lastSync ? new Date(lastSync as any) : null;
+// The sync every caller currently shares, if one is running.
+let inflight: Promise<SyncResult> | null = null;
+
+/** Start `task` as THE shared sync: callers that arrive while it runs get the same promise. */
+function share(task: () => Promise<SyncResult>): Promise<SyncResult> {
+  const run: Promise<SyncResult> = task().finally(() => {
+    if (inflight === run) {
+      inflight = null;
+    }
+  });
+  inflight = run;
+  return run;
 }
 
-/**
- * Set last sync time in IndexedDB
- */
-export async function setLastSyncTime(time: Date): Promise<void> {
-  await localDb.setSyncMetadata(LAST_SYNC_KEY, time.getTime());
-}
-
-/**
- * Check if first sync has been done
- */
-export async function isFirstSyncDone(): Promise<boolean> {
-  const done = await localDb.getSyncMetadata(FIRST_SYNC_DONE_KEY);
-  return !!done;
-}
-
-/**
- * Mark first sync as done
- */
-export async function setFirstSyncDone(): Promise<void> {
-  await localDb.setSyncMetadata(FIRST_SYNC_DONE_KEY, true);
-}
-
-/**
- * Perform delta sync - fetch only new/updated readings since last sync
- *
- * Returns:
- * - newCount: Number of new readings fetched
- * - updatedCount: Number of updated readings (always 0 for now)
- * - lastSync: Timestamp of this sync
- * - totalReadings: Total readings in cache
- */
-export async function syncNewReadings(): Promise<{
-  newCount: number;
-  updatedCount: number;
-  lastSync: Date;
-  totalReadings: number;
-}> {
+async function performSync(forceFull: boolean): Promise<SyncResult> {
   try {
-    const lastSync = await getLastSyncTime();
-    const firstSyncDone = await isFirstSyncDone();
-    const cacheDownloaded = await localDb.getSyncMetadata('cacheDownloaded');
-    
-    let newReadings: NoiseReading[] = [];
-    
-    // If cache was downloaded, skip first sync limit
-    if (cacheDownloaded) {
-      // Cache exists - syncing only new readings
-      if (lastSync) {
-        // Delta sync - fetch only readings newer than last sync
-        const q = query(
-          collection(firebaseDb, 'noise_readings'),
-          where('timestamp', '>', Timestamp.fromDate(lastSync))
-        );
-        
-        newReadings = await fetchReadings(q);
-        
-        // Update IndexedDB with new readings
-        if (newReadings.length > 0) {
-          await localDb.updateManyReadings(newReadings);
-        }
-      }
-    } else if (!firstSyncDone) {
-      // First ever sync - fetch ALL or limited readings based on MAX_INITIAL_READINGS
-      let q;
-      if (MAX_INITIAL_READINGS > 0) {
-        // Limited fetch (for testing/cost control)
-        q = query(
-          collection(firebaseDb, 'noise_readings'),
-          orderBy('timestamp', 'desc'),
-          limit(MAX_INITIAL_READINGS)
-        );
-      } else {
-        // Fetch ALL readings (no limit)
-        q = query(
-          collection(firebaseDb, 'noise_readings'),
-          orderBy('timestamp', 'desc')
-        );
-      }
-      
-      newReadings = await fetchReadings(q);
-      
-      console.log(`[Sync] First sync: Fetched ${newReadings.length} readings (MAX_INITIAL_READINGS: ${MAX_INITIAL_READINGS})`);
-      
-      // Save to IndexedDB
-      await localDb.setManyReadings(newReadings);
-      await setFirstSyncDone();
-      
-    } else if (lastSync) {
-      // Delta sync - fetch only readings newer than last sync
-      const q = query(
-        collection(firebaseDb, 'noise_readings'),
-        where('timestamp', '>', Timestamp.fromDate(lastSync))
-      );
-      
-      newReadings = await fetchReadings(q);
-      
-      // Update IndexedDB with new readings
-      if (newReadings.length > 0) {
-        await localDb.updateManyReadings(newReadings);
+    const watermark = await getWatermark();
+    // No watermark yet means nothing has been fetched: a full fetch.
+    const deltaFrom = forceFull ? null : watermark;
+    const full = deltaFrom === null;
+
+    let readings: NoiseReading[];
+    if (deltaFrom === null) {
+      readings = await fetchReadings(fullQuery());
+      await localDb.setManyReadings(readings);
+    } else {
+      readings = await fetchReadings(deltaQuery(deltaFrom));
+      if (readings.length > 0) {
+        await localDb.setManyReadings(readings);
       }
     }
-    
-    // Update last sync time
-    const now = new Date();
-    await setLastSyncTime(now);
-    
-    // Get total count
+
+    // Cursors are written only after the rows are stored: if anything above
+    // failed, the old watermark stays and the next sync re-reads.
+    const finishedAt = Date.now();
+    const next = nextWatermark(readings, deltaFrom, finishedAt);
+    if (next !== null) {
+      await localDb.setSyncMetadata(WATERMARK_KEY, next);
+    }
+    await localDb.setSyncMetadata(LAST_SYNC_AT_KEY, finishedAt);
+
     const totalReadings = await localDb.getReadingsCount();
-    
+    console.log(`[Sync] ${full ? 'Full' : 'Delta'} sync: ${readings.length} fetched, ${totalReadings} cached`);
+
     return {
-      newCount: newReadings.length,
-      updatedCount: 0,
-      lastSync: now,
+      mode: full ? 'full' : 'delta',
+      newCount: readings.length,
       totalReadings,
+      lastSync: new Date(finishedAt),
     };
   } catch (error) {
-    console.error('[Sync] Error during sync:', error);
+    console.error('[Sync] Sync failed:', error);
     throw error;
   }
+}
+
+/**
+ * Bring the cache up to date: a full fetch when nothing has been fetched yet,
+ * otherwise a delta from the watermark. Every caller that arrives while a sync
+ * is running gets that same sync (one getDocs, not one per component).
+ */
+export function syncNewReadings(): Promise<SyncResult> {
+  return inflight ?? share(() => performSync(false));
+}
+
+/**
+ * "Fetch All Readings": clear the cache, then re-download every reading.
+ */
+export async function forceFullSync(): Promise<SyncResult> {
+  // Let a sync that is already running finish first.
+  while (inflight) {
+    await inflight.catch(() => undefined);
+  }
+  await clearSyncData();
+  return share(() => performSync(true));
 }
 
 /**
@@ -188,88 +216,52 @@ export async function syncNewReadings(): Promise<{
  */
 export type SyncStatus = 'synced' | 'pending' | 'syncing' | 'error';
 
+/**
+ * Last successful sync (wall clock, display only) and the cached row count.
+ * 'pending' when the cache has never synced or the last sync is over an hour old.
+ */
 export async function getSyncStatus(): Promise<{
   status: SyncStatus;
   lastSync: Date | null;
   totalReadings: number;
 }> {
-  const lastSync = await getLastSyncTime();
+  const lastSyncAt = await readNumber(LAST_SYNC_AT_KEY);
   const totalReadings = await localDb.getReadingsCount();
-  
-  // If never synced or last sync was > 1 hour ago, mark as pending
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const isPending = !lastSync || lastSync < oneHourAgo;
-  
+  const isPending = lastSyncAt === null || Date.now() - lastSyncAt > 60 * 60 * 1000;
+
   return {
     status: isPending ? 'pending' : 'synced',
-    lastSync,
+    lastSync: lastSyncAt === null ? null : new Date(lastSyncAt),
     totalReadings,
   };
 }
 
 /**
- * Format time ago for display
+ * Format time ago for display. Pass `nowMs` to re-render on a timer.
  */
-export function formatTimeAgo(date: Date | null): string {
+export function formatTimeAgo(date: Date | null, nowMs = Date.now()): string {
   if (!date) return 'Never';
-  
-  const now = Date.now();
-  const diff = now - date.getTime();
-  
+
+  const diff = nowMs - date.getTime();
+
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  
+
   if (minutes < 1) return 'Just now';
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
-  
+
   return date.toLocaleDateString();
 }
 
 /**
- * Clear all sync data (for debugging/reset)
+ * Empty the readings cache and reset every sync cursor.
  */
 export async function clearSyncData(): Promise<void> {
   await localDb.clearAllReadings();
-  await localDb.setSyncMetadata(LAST_SYNC_KEY, null);
-  await localDb.setSyncMetadata(FIRST_SYNC_DONE_KEY, null);
-}
-
-/**
- * Force full sync - clear cache and fetch ALL readings
- * Use this when cache was synced with limit and needs to be refreshed
- */
-export async function forceFullSync(): Promise<{
-  newCount: number;
-  totalReadings: number;
-}> {
-  try {
-    // Clear existing cache
-    await clearSyncData();
-
-    // Fetch ALL readings (no limit)
-    const q = query(
-      collection(firebaseDb, 'noise_readings'),
-      orderBy('timestamp', 'desc')
-    );
-
-    const newReadings = await fetchReadings(q);
-
-    // Save to IndexedDB
-    await localDb.setManyReadings(newReadings);
-    await setFirstSyncDone();
-    await setLastSyncTime(new Date());
-
-    console.log(`[Sync] Force full sync: Fetched ${newReadings.length} readings`);
-
-    return {
-      newCount: newReadings.length,
-      totalReadings: newReadings.length,
-    };
-  } catch (error) {
-    console.error('[Sync] Force full sync failed:', error);
-    throw error;
+  for (const key of SYNC_METADATA_KEYS) {
+    await localDb.setSyncMetadata(key, null);
   }
 }
