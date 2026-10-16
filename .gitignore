@@ -58,3 +58,6 @@ Desktop.ini
 # The export scripts that wrote it were deleted; this rule stays as a
 # safety net in case an old local copy is still on disk.
 cache/
+
+# Assistant context is kept outside the repo
+CLAUDE.md
