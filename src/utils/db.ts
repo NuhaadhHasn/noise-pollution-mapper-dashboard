@@ -13,10 +13,59 @@ const STORE_NAME = 'noise_readings';
 const SYNC_STORE_NAME = 'sync_metadata';
 
 /**
- * Open IndexedDB database
+ * Message of the error openDB() rejects with when another open dashboard
+ * tab blocks a schema upgrade. It is written for the user and can be shown
+ * as-is.
+ */
+export const DB_BLOCKED_MESSAGE =
+  'Close other dashboard tabs to finish the update, then reload this page.';
+
+/** The rejection of openDB() while another tab blocks a schema upgrade. */
+export class DbBlockedError extends Error {
+  constructor() {
+    super(DB_BLOCKED_MESSAGE);
+    this.name = 'DbBlockedError';
+  }
+}
+
+/**
+ * One shared connection per page (arch-4). Every helper below awaits
+ * openDB(). It used to open a new connection on every call and never close
+ * one, so a DB_VERSION bump would hang behind the leaked connections of any
+ * other open tab.
+ */
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+/**
+ * True while an upgrade request that reported `blocked` is still pending.
+ * IndexedDB queues every later open behind it, so a new request would wait
+ * silently instead of reporting `blocked` itself: fail fast instead.
+ */
+let blockedUpgradePending = false;
+
+/**
+ * Drop the cached connection promise if it is still the given one, so the
+ * next openDB() call opens a fresh connection.
+ */
+function forget(promise: Promise<IDBDatabase>): void {
+  if (dbPromise === promise) {
+    dbPromise = null;
+  }
+}
+
+/**
+ * Open IndexedDB database (one cached connection per page)
  */
 function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) {
+    return dbPromise;
+  }
+  if (blockedUpgradePending) {
+    return Promise.reject(new DbBlockedError());
+  }
+
+  let blocked = false;
+  const opening = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
@@ -35,9 +84,48 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      if (blocked) {
+        // The caller already got DbBlockedError. The upgrade went through
+        // once the other tabs closed; release this late connection so the
+        // next openDB() starts clean.
+        blockedUpgradePending = false;
+        db.close();
+        return;
+      }
+      // Another tab wants to upgrade the schema: release this connection so
+      // its upgrade is not blocked. The next call reopens.
+      db.onversionchange = () => {
+        db.close();
+        forget(opening);
+      };
+      // The browser closed the connection itself (site data cleared, storage
+      // error). The next call reopens.
+      db.onclose = () => forget(opening);
+      resolve(db);
+    };
+    request.onerror = () => {
+      if (blocked) {
+        blockedUpgradePending = false;
+      }
+      reject(request.error);
+    };
+    request.onblocked = () => {
+      // A tab still holds a connection at the old version and did not
+      // release it (a build from before this change has no onversionchange
+      // handler). Fail visibly instead of leaving every caller waiting.
+      blocked = true;
+      blockedUpgradePending = true;
+      reject(new DbBlockedError());
+    };
   });
+
+  dbPromise = opening;
+  // Any failure (error, blocked, IndexedDB unavailable) clears the cache, so
+  // the next call retries instead of returning the same rejection forever.
+  opening.catch(() => forget(opening));
+  return opening;
 }
 
 /**
@@ -149,6 +237,14 @@ export async function getSyncMetadata(key: string): Promise<unknown> {
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
+    // An open that cannot complete (a blocked upgrade, or a newer schema
+    // already opened by another tab) must stop the sync before it fetches
+    // anything. Returning null here would make syncNewReadings treat the
+    // browser as never synced and run a full Firestore fetch it then cannot
+    // store.
+    if (error instanceof DbBlockedError || (error instanceof DOMException && error.name === 'VersionError')) {
+      throw error;
+    }
     console.error('Error getting sync metadata:', error);
     return null;
   }
