@@ -1,8 +1,9 @@
 // noinspection JSUnusedLocalSymbols
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/config/firebase';
+import { passwordResetFailure, resetSentMessage, signInErrorMessage } from '@/lib/authErrors';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,20 +26,51 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  // a11y-7: the password-reset confirmation (never an error), and its request state.
+  const [notice, setNotice] = useState('');
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    setNotice('');
     setIsLoading(true);
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
       navigate('/dashboard');
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Login failed';
-      setError(errorMessage);
+      // a11y-7: plain-language copy chosen by err.code, never the raw SDK text.
+      setError(signInErrorMessage(err));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // a11y-7: "Forgot password?" sends Firebase's reset email to the address in
+  // the email field. Auth only: nothing is written to Firestore. The success
+  // copy is the same whether or not an account exists for the address.
+  const handlePasswordReset = async () => {
+    setError('');
+    setNotice('');
+    const address = email.trim();
+    if (!address) {
+      setError('Enter your email address above, then choose "Forgot password?" again.');
+      return;
+    }
+    setIsSendingReset(true);
+    try {
+      await sendPasswordResetEmail(auth, address);
+      setNotice(resetSentMessage(address));
+    } catch (err: unknown) {
+      const outcome = passwordResetFailure(err, address);
+      if ('notice' in outcome) {
+        setNotice(outcome.notice);
+      } else {
+        setError(outcome.error);
+      }
+    } finally {
+      setIsSendingReset(false);
     }
   };
 
@@ -136,8 +168,9 @@ export default function LoginPage() {
                 </div>
               </div>
               
+              {/* a11y-7: the page's one heading (CardTitle itself renders a <div>) */}
               <CardTitle className="text-xl md:text-2xl font-bold" style={{ color: getTextColor() }}>
-                Noise Mapper Dashboard
+                <h1>Noise Mapper Dashboard</h1>
               </CardTitle>
               <CardDescription className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} text-xs md:text-sm`}>
                 Sign in with your Noise Mapper app account
@@ -156,6 +189,7 @@ export default function LoginPage() {
                     <Input
                       id="email"
                       type="email"
+                      autoComplete="username"
                       placeholder="researcher@example.com"
                       value={email}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
@@ -179,6 +213,7 @@ export default function LoginPage() {
                     <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
                       placeholder="••••••••"
                       value={password}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
@@ -193,17 +228,42 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className={`absolute right-3 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'} transition-colors`}
-                      tabIndex={-1}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-controls="password"
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <Eye className="h-4 w-4" aria-hidden="true" />
+                      )}
                     </button>
                   </div>
                 </div>
 
-                {/* Error Message */}
+                {/* Forgot password (a11y-7): Firebase's reset email for the address above */}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void handlePasswordReset()}
+                    disabled={isLoading || isSendingReset}
+                    className="text-xs font-medium hover:underline disabled:opacity-50"
+                    style={{ color: themeColor }}
+                  >
+                    {isSendingReset ? 'Sending reset email...' : 'Forgot password?'}
+                  </button>
+                </div>
+
+                {/* Error Message: role="alert" so screen readers announce it (a11y-7) */}
                 {error && (
-                  <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <div role="alert" className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20">
                     <p className="text-xs text-red-500">{error}</p>
+                  </div>
+                )}
+
+                {/* Password-reset confirmation (a11y-7) */}
+                {notice && (
+                  <div role="status" className="p-2.5 rounded-lg bg-green-500/10 border border-green-500/20">
+                    <p className={`text-xs ${isDarkMode ? 'text-green-300' : 'text-green-700'}`}>{notice}</p>
                   </div>
                 )}
 
