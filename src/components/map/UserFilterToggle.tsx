@@ -19,8 +19,10 @@ interface UserFilterToggleProps {
 /**
  * UserFilterToggle - Toggle between "My Readings Only" and "All Users"
  * 
- * Default: My Readings Only (secure, minimal Firebase reads)
- * Optional: All Users (requires downloading shared cache)
+ * My Readings Only: shows only the readings you recorded.
+ * All Users: shows readings from every contributor.
+ * Both modes are a view filter over the readings already synced to this
+ * browser; neither is an access control.
  */
 export function UserFilterToggle({ showAllUsers, onFilterChange }: UserFilterToggleProps) {
   const { isDarkMode } = useTheme();
@@ -93,21 +95,6 @@ export function UserFilterToggle({ showAllUsers, onFilterChange }: UserFilterTog
               <p>
                 This will show noise readings from <strong>all users</strong> instead of just your own.
               </p>
-              
-              <div className={`p-3 rounded-lg ${
-                isDarkMode ? 'bg-gray-800' : 'bg-blue-50'
-              }`}>
-                <p className={`text-sm font-medium mb-2 ${
-                  isDarkMode ? 'text-blue-400' : 'text-blue-800'
-                }`}>
-                  💡 Recommendation:
-                </p>
-                <p className={`text-sm ${
-                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                }`}>
-                  For best performance with all users' data, download the shared cache file. This will load all readings instantly.
-                </p>
-              </div>
               
               <p className={`text-sm ${
                 isDarkMode ? 'text-gray-400' : 'text-gray-500'
