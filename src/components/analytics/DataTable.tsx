@@ -15,6 +15,8 @@ import { authorLabel } from '@/lib/authorLabel';
 import { categoryLabel, confidenceLabel, confidenceOf } from '@/lib/categories';
 import { getReadingDate } from '@/lib/readings';
 import { ChevronUp, ChevronDown, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { noiseBand } from '@/lib/noiseBands';
+import { DbBadge } from '@/components/BandGlyph';
 
 interface DataTableProps {
   data: NoiseReading[];
@@ -148,19 +150,8 @@ export function DataTable({ data }: DataTableProps) {
     }
   };
 
-  // Get noise level color
-  const getNoiseLevelColor = (dB: number) => {
-    if (dB < 50) return isDarkMode ? '#4CAF50' : '#4CAF50';
-    if (dB <= 70) return isDarkMode ? '#FF9800' : '#FF9800';
-    return isDarkMode ? '#F44336' : '#F44336';
-  };
-
-  // Get noise level label
-  const getNoiseLevelLabel = (dB: number) => {
-    if (dB < 50) return 'Low';
-    if (dB <= 70) return 'Moderate';
-    return 'High';
-  };
+  // Row accent colour: the shared band colour (src/lib/noiseBands.ts).
+  const getNoiseLevelColor = (dB: number) => noiseBand(dB).color;
 
   return (
     <div className="space-y-4">
@@ -215,12 +206,7 @@ export function DataTable({ data }: DataTableProps) {
                     {reading.locationName || 'Unknown'}
                   </TableCell>
                   <TableCell>
-                    <span
-                      className="px-2 py-1 rounded text-xs font-semibold text-white"
-                      style={{ backgroundColor: getNoiseLevelColor(reading.decibelLevel) }}
-                    >
-                      {reading.decibelLevel.toFixed(1)} dB ({getNoiseLevelLabel(reading.decibelLevel)})
-                    </span>
+                    <DbBadge decibels={reading.decibelLevel} />
                   </TableCell>
                   <TableCell className={cn(isDarkMode ? 'text-gray-300' : 'text-gray-700')}>
                     {categoryLabel(reading)}

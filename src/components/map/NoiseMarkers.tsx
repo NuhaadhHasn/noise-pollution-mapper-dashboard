@@ -6,7 +6,8 @@ import type { NoiseReading } from '@/types/NoiseReading';
 import { categoryLabel, confidenceLabel } from '@/lib/categories';
 import { format } from 'date-fns';
 import { getCoordinates, getReadingDate } from '@/lib/readings';
-import { NOISE_BANDS, noiseBand } from '@/lib/noiseBands';
+import { bandMarkerGlyph, NOISE_BANDS, noiseBand } from '@/lib/noiseBands';
+import { BandGlyph } from '@/components/BandGlyph';
 
 // Custom marker icon factory - Pin-shaped marker
 function createMarkerIcon(color: string): Icon {
@@ -19,8 +20,8 @@ function createMarkerIcon(color: string): Icon {
         <path d="M16 0C7.163 0 0 7.163 0 16C0 26.5 16 42 16 42C16 42 32 26.5 32 16C32 7.163 24.837 0 16 0Z" fill="none" stroke="white" stroke-width="2.5"/>
         <!-- Inner white circle for contrast -->
         <circle cx="16" cy="14" r="6" fill="white"/>
-        <!-- Colored center dot -->
-        <circle cx="16" cy="14" r="4" fill="${color}"/>
+        <!-- Band glyph (circle / square / triangle) so the band is not told by colour alone -->
+        ${bandMarkerGlyph(color)}
       </svg>
     `)}`,
     iconSize: [32, 42],
@@ -93,10 +94,10 @@ function ReadingPopup({ reading, onClose }: ReadingPopupProps) {
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-600">Noise Level:</span>
             <span
-              className="px-2 py-1 rounded text-xs font-semibold text-white"
-              style={{ backgroundColor: band.color }}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold"
+              style={{ backgroundColor: band.color, color: band.textColor }}
             >
-              {reading.decibelLevel.toFixed(1)} dB
+              <BandGlyph shape={band.glyph} />{reading.decibelLevel.toFixed(1)} dB ({band.label})
             </span>
           </div>
 

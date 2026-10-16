@@ -74,7 +74,7 @@ export function SoundTypeChart() {
             <p className={cn("text-sm font-medium", isDarkMode ? "text-gray-300" : "text-gray-700")}>
               {error ? 'Readings could not be loaded' : 'No data available'}
             </p>
-            <p className={cn("text-xs mt-1", isDarkMode ? "text-gray-500" : "text-gray-500")}>
+            <p className={cn("text-xs mt-1", isDarkMode ? "text-gray-300" : "text-gray-600")}>
               {error
                 ? 'Sound types appear once the readings have been downloaded.'
                 : 'No readings have been uploaded from the mobile app yet.'}

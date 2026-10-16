@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { FLUTTER_THEME_COLORS } from '@/utils/themeConstants';
+import { readableTextColor } from '@/lib/contrast';
 
 type Theme = 'dark' | 'light' | 'system';
 
@@ -124,6 +125,7 @@ export function ThemeProvider({
       // Set BOTH OKLCH (for Tailwind bg-primary) and hex (for direct use)
       document.documentElement.style.setProperty('--primary-color', oklch);
       document.documentElement.style.setProperty('--primary-color-hex', color);
+      document.documentElement.style.setProperty('--primary-foreground-hex', readableTextColor(color));
       localStorage.setItem(`${storageKey}-primaryColor`, primaryColor);
       console.log('[ThemeContext] Applied primary color:', primaryColor, color, '→', oklch);
     }

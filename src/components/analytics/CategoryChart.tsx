@@ -80,7 +80,7 @@ export function CategoryChart() {
             <p className={cn("text-sm font-medium", isDarkMode ? "text-gray-300" : "text-gray-700")}>
               {error ? 'Readings could not be loaded' : 'No data available'}
             </p>
-            <p className={cn("text-xs mt-1", isDarkMode ? "text-gray-500" : "text-gray-500")}>
+            <p className={cn("text-xs mt-1", isDarkMode ? "text-gray-300" : "text-gray-600")}>
               {error
                 ? 'Categories appear once the readings have been downloaded.'
                 : unclassifiedCount > 0
@@ -207,7 +207,7 @@ export function CategoryChart() {
             <span className={cn("font-medium truncate flex-1", isDarkMode ? "text-gray-300" : "text-gray-700")}>
               {data.category}
             </span>
-            <span className={cn("text-xs shrink-0", isDarkMode ? "text-gray-500" : "text-gray-500")}>
+            <span className={cn("text-xs shrink-0", isDarkMode ? "text-gray-300" : "text-gray-600")}>
               ({data.count})
             </span>
           </div>

@@ -1,4 +1,5 @@
 import { useTheme } from '@/contexts/ThemeContext';
+import { BandGlyph } from '@/components/BandGlyph';
 import {
   DB_CAVEAT,
   LOW_BAND_BELOW_DB,
@@ -44,9 +45,11 @@ export function MapLegend({ showHeatmap }: MapLegendProps) {
           <li key={band.id} className="flex items-center gap-2">
             <span
               aria-hidden="true"
-              className="inline-block h-3 w-3 shrink-0 rounded-full border border-white/70"
+              className="inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full border border-white/70"
               style={{ backgroundColor: band.color }}
-            />
+            >
+              <BandGlyph shape={band.glyph} className="text-[#1E1932]" />
+            </span>
             <span className="font-medium">{band.label}</span>
             <span className={muted}>{range}</span>
           </li>

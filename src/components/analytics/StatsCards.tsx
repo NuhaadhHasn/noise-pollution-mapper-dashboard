@@ -64,7 +64,7 @@ export function StatsCards() {
         style={{ backgroundColor: getCardColor() }}
       >
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs sm:text-sm font-medium text-gray-500">Total Readings</h3>
+          <h3 className={cn('text-xs sm:text-sm font-medium', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>Total Readings</h3>
           <Database className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
         </div>
         <p className={cn(
@@ -81,14 +81,14 @@ export function StatsCards() {
         style={{ backgroundColor: getCardColor() }}
       >
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs sm:text-sm font-medium text-gray-500">Avg Noise Level</h3>
+          <h3 className={cn('text-xs sm:text-sm font-medium', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>Avg Noise Level</h3>
           <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
         </div>
         <p className={cn(
           'text-2xl sm:text-3xl font-bold transition-colors',
           isDarkMode ? 'text-white' : 'text-gray-900'
         )}>
-          {stats.avgNoiseLevel} <span className="text-sm font-normal text-gray-500">dB</span>
+          {stats.avgNoiseLevel} <span className={cn('text-sm font-normal', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>dB</span>
         </p>
       </div>
 
@@ -98,14 +98,14 @@ export function StatsCards() {
         style={{ backgroundColor: getCardColor() }}
       >
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs sm:text-sm font-medium text-gray-500">Peak Noise</h3>
+          <h3 className={cn('text-xs sm:text-sm font-medium', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>Peak Noise</h3>
           <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
         </div>
         <p className={cn(
           'text-2xl sm:text-3xl font-bold transition-colors',
           isDarkMode ? 'text-white' : 'text-gray-900'
         )}>
-          {stats.maxNoiseLevel} <span className="text-sm font-normal text-gray-500">dB</span>
+          {stats.maxNoiseLevel} <span className={cn('text-sm font-normal', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>dB</span>
         </p>
       </div>
 
@@ -115,7 +115,7 @@ export function StatsCards() {
         style={{ backgroundColor: getCardColor() }}
       >
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs sm:text-sm font-medium text-gray-500">Active Users</h3>
+          <h3 className={cn('text-xs sm:text-sm font-medium', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>Active Users</h3>
           <Users className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
         </div>
         <p className={cn(

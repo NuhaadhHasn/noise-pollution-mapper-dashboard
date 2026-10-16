@@ -57,7 +57,7 @@
     --card-foreground: oklch(0.145 0 0);
     /* Dynamic primary color - updated by ThemeContext (uses hex for exact color match) */
     --primary: var(--primary-color-hex, #6C63FF); /* Default Purple */
-    --primary-foreground: oklch(0.985 0 0);
+    --primary-foreground: var(--primary-foreground-hex, oklch(0.985 0 0)); /* white or dark ink, by luminance (a11y-5) */
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
@@ -92,7 +92,7 @@
     --popover-foreground: oklch(0.985 0 0);
     /* Dynamic primary color - updated by ThemeContext (uses hex for exact color match) */
     --primary: var(--primary-color-hex, #6C63FF); /* Default Purple */
-    --primary-foreground: oklch(0.985 0 0);
+    --primary-foreground: var(--primary-foreground-hex, oklch(0.985 0 0)); /* white or dark ink, by luminance (a11y-5) */
     --secondary: oklch(0.269 0 0);
     --secondary-foreground: oklch(0.985 0 0);
     --muted: oklch(0.269 0 0);

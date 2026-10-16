@@ -84,7 +84,7 @@ export function SyncStatus() {
 
         {readings.length > 0 && (
           <span className={`text-xs ${
-            isDarkMode ? 'text-gray-500' : 'text-gray-400'
+            isDarkMode ? 'text-gray-300' : 'text-gray-600'
           }`}>
             • {readings.length.toLocaleString()} cached (all users)
           </span>

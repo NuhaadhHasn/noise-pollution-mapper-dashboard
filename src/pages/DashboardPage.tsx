@@ -155,7 +155,7 @@ export default function DashboardPage() {
                     </p>
                     <p className={cn(
                       'text-xs sm:text-sm transition-colors mt-1',
-                      isDarkMode ? 'text-gray-500' : 'text-gray-500'
+                      isDarkMode ? 'text-gray-300' : 'text-gray-600'
                     )}>
                       Click "View Full Map" to try again
                     </p>

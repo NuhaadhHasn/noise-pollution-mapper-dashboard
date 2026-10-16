@@ -253,7 +253,7 @@ export default function MapPage() {
               onFilterChange={setShowAllUsers}
             />
             <p className={`text-xs mt-2 ${
-              isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              isDarkMode ? 'text-gray-300' : 'text-gray-600'
             }`}>
               {showAllUsers 
                 ? 'Showing readings from all users' 
@@ -270,7 +270,7 @@ export default function MapPage() {
             </label>
             <DateRangeFilter value={datePreset} onChange={setDatePreset} />
             <p className={`text-xs mt-2 ${
-              isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              isDarkMode ? 'text-gray-300' : 'text-gray-600'
             }`}>
               {presetSummary(datePreset)}
             </p>
@@ -294,7 +294,7 @@ export default function MapPage() {
               {isRefreshing ? 'Fetching...' : 'Fetch All Readings'}
             </Button>
             <p className={`text-xs mt-2 ${
-              isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              isDarkMode ? 'text-gray-300' : 'text-gray-600'
             }`}>
               Re-download every reading from Firebase. The cache is replaced only after the download succeeds.
             </p>
@@ -320,7 +320,7 @@ export default function MapPage() {
               More filters coming soon:
             </p>
             <ul className={`text-xs mt-2 space-y-1 ${
-              isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              isDarkMode ? 'text-gray-300' : 'text-gray-600'
             }`}>
               <li>• Category</li>
               <li>• Noise level</li>

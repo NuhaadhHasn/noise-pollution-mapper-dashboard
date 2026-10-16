@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { FLUTTER_THEME_COLORS } from '@/utils/themeConstants';
+import { readableTextColor } from '@/lib/contrast';
 import { Eye, EyeOff, Mail, Lock, Loader2, Volume2 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -227,7 +228,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className={`absolute right-3 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'} transition-colors`}
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-800'} transition-colors`}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       aria-controls="password"
                     >
@@ -256,7 +257,7 @@ export default function LoginPage() {
                 {/* Error Message: role="alert" so screen readers announce it (a11y-7) */}
                 {error && (
                   <div role="alert" className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20">
-                    <p className="text-xs text-red-500">{error}</p>
+                    <p className={`text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>{error}</p>
                   </div>
                 )}
 
@@ -270,10 +271,11 @@ export default function LoginPage() {
                 {/* Sign In Button */}
                 <Button
                   type="submit"
-                  className="w-full h-10 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 text-sm"
+                  className="w-full h-10 font-semibold shadow-lg hover:shadow-xl transition-all duration-300 text-sm"
                   disabled={isLoading}
                   style={{ 
                     backgroundColor: themeColor,
+                    color: readableTextColor(themeColor),
                     boxShadow: `0 4px 14px ${themeColor}40`,
                   }}
                 >
@@ -293,15 +295,15 @@ export default function LoginPage() {
                 <div className="absolute inset-0 flex items-center">
                   <div className={`w-full border-t ${isDarkMode ? 'border-white/10' : 'border-gray-200'}`} />
                 </div>
-                <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
-                  <span className={`px-3 ${isDarkMode ? 'bg-[#2D2640] text-gray-500' : 'bg-white text-gray-500'}`}>
+                <div className="relative flex justify-center text-xs uppercase tracking-wider">
+                  <span className={`px-3 ${isDarkMode ? 'bg-[#2D2640] text-gray-400' : 'bg-white text-gray-600'}`}>
                     Secured by Firebase
                   </span>
                 </div>
               </div>
 
               {/* Footer */}
-              <p className="text-center text-[10px] text-gray-500 font-medium tracking-wide">
+              <p className={`text-center text-xs font-medium tracking-wide ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 Nuhaadh Hassan | Paradise Techx
               </p>
             </CardContent>
