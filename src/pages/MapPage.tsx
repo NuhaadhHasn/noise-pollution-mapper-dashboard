@@ -14,7 +14,15 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import type { NoiseReading } from '@/types/NoiseReading';
-import * as syncManager from '@/utils/syncManager';
+import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export default function MapPage() {
   const navigate = useNavigate();
@@ -27,22 +35,30 @@ export default function MapPage() {
   const [showAllUsers, setShowAllUsers] = useState(false); // Phase 1: User filter
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date } | null>(null); // Phase 3: Date filter (null = all time)
   const [isRefreshing, setIsRefreshing] = useState(false); // Force refresh state
+  const [confirmFullSyncOpen, setConfirmFullSyncOpen] = useState(false);
+  const [fullSyncNotice, setFullSyncNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const { isDarkMode, primaryColor } = useTheme();
+  const { forceFullSync } = useSyncedReadings();
 
-  // Handle force full sync
+  // "Fetch All Readings": re-download everything through the provider, which
+  // swaps the cache only after the download succeeded (bug-5). The provider's
+  // readings update in place, so the map refreshes without a page reload.
   const handleForceFullSync = async () => {
-    if (!confirm('This will clear the cache and fetch ALL readings from Firebase. This may take 2-3 minutes. Continue?')) {
-      return;
-    }
-
+    setConfirmFullSyncOpen(false);
     setIsRefreshing(true);
+    setFullSyncNotice(null);
     try {
-      const result = await syncManager.forceFullSync();
-      alert(`Successfully fetched ${result.newCount.toLocaleString()} readings!`);
-      window.location.reload(); // Reload to refresh map
+      const result = await forceFullSync();
+      setFullSyncNotice({
+        kind: 'success',
+        text: `Fetched ${result.count.toLocaleString()} readings. The map is up to date.`,
+      });
     } catch (error) {
       console.error('Force full sync failed:', error);
-      alert('Failed to fetch all readings. Please try again.');
+      setFullSyncNotice({
+        kind: 'error',
+        text: 'Could not fetch all readings. The readings already cached are unchanged. Please try again.',
+      });
     } finally {
       setIsRefreshing(false);
     }
@@ -87,10 +103,8 @@ export default function MapPage() {
 
         {/* Controls - Right aligned */}
         <div className="flex gap-1.5 shrink-0 border-t sm:border-t-0 sm:border-l border-gray-200 dark:border-gray-700 pt-2 sm:pt-0 sm:pl-3">
-          {/* Sync Status */}
-          <SyncStatus onSyncComplete={(result) => {
-            console.log(`Synced ${result.newCount} new readings, total: ${result.totalReadings}`);
-          }} />
+          {/* Sync Status: reads and drives the shared ReadingsProvider (bug-4) */}
+          <SyncStatus />
 
           {/* Heatmap Toggle */}
           <Button
@@ -241,7 +255,7 @@ export default function MapPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleForceFullSync}
+              onClick={() => setConfirmFullSyncOpen(true)}
               disabled={isRefreshing}
               className="w-full"
             >
@@ -251,8 +265,20 @@ export default function MapPage() {
             <p className={`text-xs mt-2 ${
               isDarkMode ? 'text-gray-500' : 'text-gray-400'
             }`}>
-              Clear cache and fetch ALL readings from Firebase
+              Re-download every reading from Firebase. The cache is replaced only after the download succeeds.
             </p>
+            {fullSyncNotice && (
+              <p
+                role={fullSyncNotice.kind === 'error' ? 'alert' : 'status'}
+                className={`text-xs mt-2 ${
+                  fullSyncNotice.kind === 'error'
+                    ? 'text-red-500'
+                    : isDarkMode ? 'text-green-400' : 'text-green-700'
+                }`}
+              >
+                {fullSyncNotice.text}
+              </p>
+            )}
           </div>
 
           {/* Placeholder for future filters */}
@@ -271,6 +297,34 @@ export default function MapPage() {
           </div>
         </div>
       )}
+
+      {/* "Fetch All Readings" confirmation (replaces window.confirm, bug-5) */}
+      <Dialog open={confirmFullSyncOpen} onOpenChange={setConfirmFullSyncOpen}>
+        <DialogContent className={`max-w-md z-[9999] ${
+          isDarkMode ? 'bg-[#2D2640] border-gray-700' : 'bg-white'
+        }`}>
+          <DialogHeader>
+            <DialogTitle className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+              Fetch all readings?
+            </DialogTitle>
+            <DialogDescription className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>
+              This downloads every reading from Firebase again (one billed read per reading) and can take a few minutes on a slow connection. The readings already cached stay on the map until the download succeeds.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmFullSyncOpen(false)}
+              className={isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : ''}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleForceFullSync}>
+              Fetch all readings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

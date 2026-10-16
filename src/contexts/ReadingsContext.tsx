@@ -205,6 +205,43 @@ export function ReadingsProvider({ children }: ReadingsProviderProps) {
     };
   }, [uid, update, runSync]);
 
+  // bug-4: a real auto-sync. While an account is signed in, one delta sync
+  // every AUTO_SYNC_INTERVAL_MS, plus one when the tab becomes visible again
+  // and the last successful sync (from any tab: it is read from IndexedDB) is
+  // older than RESYNC_ON_VISIBLE_AFTER_MS. Each shares a sync already running.
+  useEffect(() => {
+    if (uid === null) {
+      return;
+    }
+    const syncInBackground = () => {
+      void runSync(false).catch(() => {
+        // Already in `error`.
+      });
+    };
+    const interval = window.setInterval(syncInBackground, syncManager.AUTO_SYNC_INTERVAL_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+      void syncManager
+        .getSyncStatus()
+        .then(({ lastSync }) => {
+          if (
+            lastSync === null ||
+            Date.now() - lastSync.getTime() > syncManager.RESYNC_ON_VISIBLE_AFTER_MS
+          ) {
+            syncInBackground();
+          }
+        })
+        .catch(() => undefined);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [uid, runSync]);
+
   const current = session.uid === uid ? session : null;
   const value = useMemo<ReadingsContextValue>(
     () => ({

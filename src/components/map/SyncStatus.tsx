@@ -1,73 +1,47 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { RefreshCw, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
-import * as syncManager from '@/utils/syncManager';
+import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { AUTO_SYNC_INTERVAL_MS, formatTimeAgo } from '@/utils/syncManager';
 
-interface SyncStatusProps {
-  onSyncComplete?: (result: syncManager.SyncResult) => void;
-}
+// How often the relative time ("2m ago") re-renders. No sync happens here.
+const CLOCK_TICK_MS = 30 * 1000;
+
+type DisplayStatus = 'synced' | 'pending' | 'syncing' | 'error';
 
 /**
- * SyncStatus - Shows sync state and provides manual sync button
- * 
+ * SyncStatus - the ReadingsProvider's real sync state, plus a Sync button.
+ *
+ * Everything comes from the provider (bug-4). The button runs the provider's
+ * refresh(), so markers, heatmap and counts update from the same sync. The
+ * provider itself syncs every AUTO_SYNC_INTERVAL_MS and when the tab becomes
+ * visible again; this component only displays the result.
+ *
  * States:
- * - synced: Green checkmark, "Just now"
- * - pending: Gray clock, "X time ago" + Sync button
- * - syncing: Blue spinner, "Syncing..."
- * - error: Red alert, "Retry" button
+ * - synced: green check, "Last synced: Just now" (within the auto-sync interval)
+ * - pending: grey clock, "Last synced: 3h ago" / "Never"
+ * - syncing: blue spinner, "Syncing..."
+ * - error: red alert, "Sync failed" + Retry
  */
-export function SyncStatus({ onSyncComplete }: SyncStatusProps) {
+export function SyncStatus() {
   const { isDarkMode } = useTheme();
-  const [status, setStatus] = useState<syncManager.SyncStatus>('pending');
-  const [lastSync, setLastSync] = useState<Date | null>(null);
-  const [totalReadings, setTotalReadings] = useState(0);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const { readings, syncing, error, lastSync, refresh } = useSyncedReadings();
+  const [now, setNow] = useState(() => Date.now());
 
-  // Load initial sync status
+  // Re-render the relative time without re-syncing.
   useEffect(() => {
-    loadSyncStatus();
-    
-    // Auto-sync every hour
-    const interval = setInterval(loadSyncStatus, 60 * 60 * 1000);
-    return () => clearInterval(interval);
+    const timer = window.setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
+    return () => window.clearInterval(timer);
   }, []);
 
-  async function loadSyncStatus() {
-    try {
-      const syncStatus = await syncManager.getSyncStatus();
-      setStatus(syncStatus.status);
-      setLastSync(syncStatus.lastSync);
-      setTotalReadings(syncStatus.totalReadings);
-    } catch (err) {
-      console.error('Error loading sync status:', err);
-      setStatus('error');
-    }
-  }
-
-  async function handleSync() {
-    if (isSyncing) return;
-    
-    setIsSyncing(true);
-    setStatus('syncing');
-    
-    try {
-      const result = await syncManager.syncNewReadings();
-      
-      setLastSync(result.lastSync);
-      setTotalReadings(result.totalReadings);
-      setStatus('synced');
-      
-      if (onSyncComplete) {
-        onSyncComplete(result);
-      }
-    } catch (err) {
-      console.error('Sync failed:', err);
-      setStatus('error');
-    } finally {
-      setIsSyncing(false);
-    }
-  }
+  const status: DisplayStatus = syncing
+    ? 'syncing'
+    : error
+      ? 'error'
+      : lastSync !== null && now - lastSync.getTime() < AUTO_SYNC_INTERVAL_MS
+        ? 'synced'
+        : 'pending';
 
   // Render icon based on status
   function renderIcon() {
@@ -83,74 +57,54 @@ export function SyncStatus({ onSyncComplete }: SyncStatusProps) {
     }
   }
 
-  // Render text based on status
-  function renderText() {
-    switch (status) {
-      case 'synced':
-        return 'Just now';
-      case 'syncing':
-        return 'Syncing...';
-      case 'error':
-        return 'Sync failed';
-      default:
-        return syncManager.formatTimeAgo(lastSync);
-    }
-  }
-
-  // Show sync button for pending/error states
-  const showSyncButton = (status === 'pending' || status === 'error') && !isSyncing;
-
   return (
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-      isDarkMode ? 'bg-[#2D2640]/95' : 'bg-white/95'
-    } backdrop-blur-sm shadow-lg`}>
-      {/* Icon */}
+    <div
+      role="status"
+      aria-live="polite"
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+        isDarkMode ? 'bg-[#2D2640]/95' : 'bg-white/95'
+      } backdrop-blur-sm shadow-lg`}
+    >
       <div className="flex items-center gap-2">
         {renderIcon()}
-        
-        {/* Text */}
+
         <span className={`text-xs font-medium ${
           isDarkMode ? 'text-gray-300' : 'text-gray-700'
         }`}>
-          {status === 'synced' || status === 'syncing' ? '' : 'Last synced: '}
-          {renderText()}
+          {status === 'syncing' && 'Syncing...'}
+          {status === 'error' && 'Sync failed'}
+          {(status === 'synced' || status === 'pending') && (
+            <>
+              Last synced:{' '}
+              {/* The ticking time is not re-announced every minute. */}
+              <span aria-live="off">{formatTimeAgo(lastSync, now)}</span>
+            </>
+          )}
         </span>
-        
-        {/* Total readings count */}
-        {totalReadings > 0 && (
+
+        {readings.length > 0 && (
           <span className={`text-xs ${
             isDarkMode ? 'text-gray-500' : 'text-gray-400'
           }`}>
-            • {totalReadings} readings
+            • {readings.length.toLocaleString()} cached (all users)
           </span>
         )}
       </div>
-      
-      {/* Sync Button */}
-      {showSyncButton && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleSync}
-          className={`h-6 px-2 text-xs ${
-            status === 'error'
-              ? 'border-red-300 text-red-600 hover:bg-red-50'
-              : ''
-          }`}
-          title={status === 'error' ? 'Retry sync' : 'Sync new readings'}
-        >
-          {status === 'error' ? 'Retry' : 'Sync'}
-        </Button>
-      )}
-      
-      {/* Tooltip for synced state */}
-      {status === 'synced' && (
-        <span className={`text-xs ${
-          isDarkMode ? 'text-green-400' : 'text-green-600'
-        }`}>
-          ✓
-        </span>
-      )}
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => void refresh()}
+        disabled={syncing}
+        className={`h-6 px-2 text-xs ${
+          status === 'error'
+            ? 'border-red-300 text-red-600 hover:bg-red-50'
+            : ''
+        }`}
+        title={status === 'error' ? 'Retry sync' : 'Sync new readings'}
+      >
+        {status === 'error' ? 'Retry' : 'Sync'}
+      </Button>
     </div>
   );
 }

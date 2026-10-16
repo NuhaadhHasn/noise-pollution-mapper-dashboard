@@ -48,6 +48,12 @@ export const MAX_FUTURE_SKEW_MS = 24 * 3_600_000;
  */
 export const FULL_REPLACE_INTERVAL_MS = 24 * 3_600_000;
 
+/** bug-4: while an account is signed in, the ReadingsProvider runs a delta sync this often. */
+export const AUTO_SYNC_INTERVAL_MS = 3_600_000;
+
+/** bug-4: when the tab becomes visible again, sync if the last sync (any tab) is older than this. */
+export const RESYNC_ON_VISIBLE_AFTER_MS = 5 * 60_000;
+
 /** sync_metadata key: newest server `timestamp` in the cache (epoch ms). */
 const WATERMARK_KEY = 'maxTimestampMs';
 /** sync_metadata key: wall-clock time of the last successful sync (epoch ms). Display only. */
