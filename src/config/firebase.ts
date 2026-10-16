@@ -9,7 +9,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore'; // Changed from 'firebase/firestore/lite' to support onSnapshot
-import { getStorage } from 'firebase/storage';
 
 // Firebase configuration from environment variables
 const firebaseConfig = {
@@ -27,7 +26,6 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firebase services
 export const auth: any = getAuth(app);
 export const db: any = getFirestore(app);
-export const storage: any = getStorage(app);
 
 // Export the app for use in other modules
 export default app;
