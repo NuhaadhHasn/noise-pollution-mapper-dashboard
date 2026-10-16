@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getCoordinates, getReadingDate, toDate, toMillis } from '@/lib/readings';
+import { getCoordinates, getReadingDate, normalizeReading, toDate, toMillis } from '@/lib/readings';
 
 // Stand-in for the Firestore SDK Timestamp: its data lives in own fields and
 // its methods on the prototype. A structured clone (what IndexedDB does on
@@ -137,5 +137,129 @@ describe('getCoordinates', () => {
     expect(getCoordinates({ latitude: 6.9271, longitude: Infinity })).toBeNull();
     expect(getCoordinates({ latitude: 91, longitude: 79.8612 })).toBeNull();
     expect(getCoordinates({ latitude: 6.9271, longitude: -181 })).toBeNull();
+  });
+});
+
+describe('normalizeReading', () => {
+  // A production doc as getDocs() returns it: the 12 known keys.
+  function rawDoc(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      userId: 'uid-123',
+      userEmail: 'ab***@example.com',
+      decibelLevel: 62.5,
+      latitude: 6.9271,
+      longitude: 79.8612,
+      locationName: 'Colombo Fort',
+      timestamp: new FakeTimestamp(SECONDS, 0),
+      createdAt: new FakeTimestamp(SECONDS - 5, 0),
+      deviceInfo: 'Mobile Device',
+      soundClass: 'Traffic',
+      soundType: 'Pollution',
+      confidence: 0.82,
+      ...overrides,
+    };
+  }
+
+  it('maps a full doc onto the plain DTO with epoch-ms dates', () => {
+    expect(normalizeReading('r1', rawDoc())).toEqual({
+      id: 'r1',
+      userId: 'uid-123',
+      userEmail: 'ab***@example.com',
+      decibelLevel: 62.5,
+      latitude: 6.9271,
+      longitude: 79.8612,
+      locationName: 'Colombo Fort',
+      timestamp: MS,
+      createdAt: MS - 5000,
+      soundClass: 'Traffic',
+      soundType: 'Pollution',
+      confidence: 0.82,
+    });
+  });
+
+  it('keeps only declared keys: no deviceInfo, no unknown key, no soundCategory', () => {
+    const reading = normalizeReading('r1', rawDoc({ extra: { nested: true }, soundCategory: 'Traffic' }));
+    expect(reading).not.toBeNull();
+    expect(Object.keys(reading ?? {}).sort()).toEqual([
+      'confidence',
+      'createdAt',
+      'decibelLevel',
+      'id',
+      'latitude',
+      'locationName',
+      'longitude',
+      'soundClass',
+      'soundType',
+      'timestamp',
+      'userEmail',
+      'userId',
+    ]);
+  });
+
+  it('produces a row that survives an IndexedDB structured clone unchanged (bug-1)', () => {
+    const reading = normalizeReading('r1', rawDoc());
+    const stored = structuredClone(reading);
+    expect(stored).toEqual(reading);
+    expect(typeof stored?.timestamp).toBe('number');
+  });
+
+  it('accepts a doc whose Timestamps were already structure-cloned', () => {
+    expect(normalizeReading('r1', structuredClone(rawDoc()))?.timestamp).toBe(MS);
+  });
+
+  it('keeps an unclassified doc and leaves the optional fields absent', () => {
+    const doc = rawDoc({ userEmail: null });
+    delete doc.soundClass;
+    delete doc.soundType;
+    delete doc.confidence;
+    delete doc.createdAt;
+    expect(normalizeReading('r2', doc)).toEqual({
+      id: 'r2',
+      userId: 'uid-123',
+      decibelLevel: 62.5,
+      latitude: 6.9271,
+      longitude: 79.8612,
+      locationName: 'Colombo Fort',
+      timestamp: MS,
+    });
+  });
+
+  it("drops a soundType other than 'Pollution'/'Ambient' and a non-numeric confidence", () => {
+    const reading = normalizeReading('r3', rawDoc({ soundType: 'Both', confidence: '0.9' }));
+    expect(reading).not.toBeNull();
+    expect(reading?.soundType).toBeUndefined();
+    expect(reading?.confidence).toBeUndefined();
+  });
+
+  it('keeps a doc with an unparseable timestamp as timestamp: null', () => {
+    const doc = rawDoc({ timestamp: 'not a date' });
+    delete doc.createdAt;
+    expect(normalizeReading('r4', doc)?.timestamp).toBeNull();
+  });
+
+  it('drops docs no app version writes (sec-1)', () => {
+    const bad: Record<string, unknown>[] = [
+      rawDoc({ userId: undefined }),
+      rawDoc({ userId: 42 }),
+      rawDoc({ decibelLevel: '62.5' }),
+      rawDoc({ decibelLevel: NaN }),
+      rawDoc({ decibelLevel: Infinity }),
+      rawDoc({ latitude: undefined }),
+      rawDoc({ latitude: '6.9271' }),
+      rawDoc({ longitude: 200 }),
+      rawDoc({ soundClass: { x: 1 } }),
+      rawDoc({ locationName: 12 }),
+      rawDoc({ userEmail: ['ab***@example.com'] }),
+    ];
+    for (const doc of bad) {
+      expect(normalizeReading('bad', doc)).toBeNull();
+    }
+  });
+
+  it('drops a doc that has only the legacy nested location', () => {
+    const doc = rawDoc({ location: { latitude: 6.9271, longitude: 79.8612 } });
+    delete doc.latitude;
+    delete doc.longitude;
+    expect(normalizeReading('r5', doc)).toBeNull();
   });
 });

@@ -15,6 +15,8 @@
  * 2.15).
  */
 
+import type { NoiseReading } from '@/types/NoiseReading';
+
 /** Largest |epoch ms| a JavaScript Date can hold; beyond it, Invalid Date. */
 const MAX_DATE_MS = 8.64e15;
 
@@ -23,12 +25,10 @@ export interface LatLng {
   lng: number;
 }
 
-/** The coordinate fields a reading may carry. */
+/** The coordinate fields a reading (or a raw Firestore doc) may carry. */
 export interface CoordinateFields {
   latitude?: unknown;
   longitude?: unknown;
-  /** Legacy nested shape, still declared on NoiseReading until 04.3. */
-  location?: unknown;
 }
 
 /** The date fields a reading may carry. */
@@ -118,21 +118,79 @@ export function getReadingDate(reading: DateFields): Date | null {
 
 /**
  * A reading's coordinates as finite, in-range numbers, or null when it has
- * none. The flat `latitude`/`longitude` fields the app writes come first
- * (all 3,374 production docs are flat).
+ * none. Only the flat `latitude`/`longitude` fields the app writes count:
+ * all 3,374 production docs are flat, and the nested `location` shape (never
+ * written by any app version) left NoiseReading in 04.3.
  */
 export function getCoordinates(reading: CoordinateFields): LatLng | null {
-  const flat = validLatLng(reading.latitude, reading.longitude);
-  if (flat) {
-    return flat;
+  return validLatLng(reading.latitude, reading.longitude);
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'string';
+}
+
+/**
+ * Map one raw Firestore document onto the plain NoiseReading DTO that the
+ * dashboard stores in IndexedDB and renders (bug-1, sec-1).
+ *
+ * Returns null, so the doc is never cached or rendered, for a doc no app
+ * version writes:
+ * - `userId` is not a string;
+ * - `decibelLevel` is not a finite number;
+ * - `latitude`/`longitude` are not finite, in-range numbers;
+ * - `soundClass`, `locationName` or `userEmail` is present but not a string
+ *   (null counts as absent: the app's offline path can write a null
+ *   `userEmail`).
+ *
+ * Otherwise `timestamp` and `createdAt` become epoch ms (`timestamp` is null
+ * when unparseable; `createdAt` is omitted), and only keys declared on
+ * NoiseReading are copied. `soundType` survives only as 'Pollution' or
+ * 'Ambient', `confidence` only as a finite number. `deviceInfo` and any
+ * unknown key are dropped. `soundCategory` is never copied: no app version
+ * writes it.
+ */
+export function normalizeReading(id: string, data: Record<string, unknown>): NoiseReading | null {
+  const { userId, decibelLevel, locationName, soundClass, soundType, confidence, userEmail } = data;
+
+  if (typeof userId !== 'string' || !isFiniteNumber(decibelLevel)) {
+    return null;
   }
-  // Legacy nested { latitude, longitude } shape, still declared on
-  // NoiseReading. No app version writes it; 04.3 deletes this branch
-  // together with the `location` field.
-  const loc = reading.location;
-  if (loc && typeof loc === 'object') {
-    const nested = loc as { latitude?: unknown; longitude?: unknown };
-    return validLatLng(nested.latitude, nested.longitude);
+  const coords = getCoordinates(data);
+  if (!coords) {
+    return null;
   }
-  return null;
+  if (!isOptionalString(soundClass) || !isOptionalString(locationName) || !isOptionalString(userEmail)) {
+    return null;
+  }
+
+  const reading: NoiseReading = {
+    id,
+    userId,
+    decibelLevel,
+    latitude: coords.lat,
+    longitude: coords.lng,
+    timestamp: toMillis(data.timestamp),
+  };
+
+  const createdAt = toMillis(data.createdAt);
+  if (createdAt !== null) {
+    reading.createdAt = createdAt;
+  }
+  if (typeof locationName === 'string') {
+    reading.locationName = locationName;
+  }
+  if (typeof soundClass === 'string') {
+    reading.soundClass = soundClass;
+  }
+  if (soundType === 'Pollution' || soundType === 'Ambient') {
+    reading.soundType = soundType;
+  }
+  if (isFiniteNumber(confidence)) {
+    reading.confidence = confidence;
+  }
+  if (typeof userEmail === 'string') {
+    reading.userEmail = userEmail;
+  }
+  return reading;
 }

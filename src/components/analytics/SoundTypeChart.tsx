@@ -15,7 +15,6 @@ interface SoundTypeData {
 const SOUND_TYPE_COLORS: Record<string, string> = {
   'Pollution': '#F44336',    // Red badge
   'Ambient': '#4CAF50',      // Green badge
-  'Both': '#AB47BC',         // Purple badge
   'Unknown': '#9E9E9E',      // Gray badge
 };
 

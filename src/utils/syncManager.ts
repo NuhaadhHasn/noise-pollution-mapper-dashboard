@@ -9,9 +9,11 @@
  */
 
 import { collection, getDocs, limit, orderBy, query, Timestamp, where } from 'firebase/firestore';
+import type { Query } from 'firebase/firestore';
 import { db as firebaseDb } from '@/config/firebase';
 import * as localDb from '@/utils/db';
 import type { NoiseReading } from '@/types/NoiseReading';
+import { normalizeReading } from '@/lib/readings';
 
 const LAST_SYNC_KEY = 'lastSyncTime';
 const FIRST_SYNC_DONE_KEY = 'firstSyncDone';
@@ -22,6 +24,34 @@ const FIRST_SYNC_DONE_KEY = 'firstSyncDone';
  * Set to any number > 0 to limit (e.g., 500)
  */
 const MAX_INITIAL_READINGS = 0; // 0 = fetch ALL, >0 = limit to this number
+
+/**
+ * Run a noise_readings query and normalize every doc into the plain
+ * NoiseReading DTO that IndexedDB stores (bug-1, sec-1). A doc no app
+ * version writes is dropped here, so it is never cached and never reaches a
+ * chart, table, popup or export. Only the count of dropped docs is logged,
+ * never their content (convention 2.13).
+ *
+ * The callers' query shapes are unchanged: the full fetch is
+ * orderBy('timestamp', 'desc') and the delta is where('timestamp', '>', ...).
+ */
+export async function fetchReadings(q: Query): Promise<NoiseReading[]> {
+  const snapshot = await getDocs(q);
+  const readings: NoiseReading[] = [];
+  let dropped = 0;
+  for (const doc of snapshot.docs) {
+    const reading = normalizeReading(doc.id, doc.data());
+    if (reading) {
+      readings.push(reading);
+    } else {
+      dropped++;
+    }
+  }
+  if (dropped > 0) {
+    console.warn(`[Sync] Skipped ${dropped} malformed reading(s) of ${snapshot.size}`);
+  }
+  return readings;
+}
 
 /**
  * Get last sync time from IndexedDB
@@ -86,11 +116,7 @@ export async function syncNewReadings(): Promise<{
           where('timestamp', '>', Timestamp.fromDate(lastSync))
         );
         
-        const snapshot = await getDocs(q);
-        newReadings = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as NoiseReading[];
+        newReadings = await fetchReadings(q);
         
         // Update IndexedDB with new readings
         if (newReadings.length > 0) {
@@ -115,14 +141,7 @@ export async function syncNewReadings(): Promise<{
         );
       }
       
-      const snapshot = await getDocs(q);
-      newReadings = snapshot.docs.map(doc => {
-        const data = doc.data() as NoiseReading;
-        return {
-          id: doc.id,
-          ...data,
-        };
-      });
+      newReadings = await fetchReadings(q);
       
       console.log(`[Sync] First sync: Fetched ${newReadings.length} readings (MAX_INITIAL_READINGS: ${MAX_INITIAL_READINGS})`);
       
@@ -137,14 +156,7 @@ export async function syncNewReadings(): Promise<{
         where('timestamp', '>', Timestamp.fromDate(lastSync))
       );
       
-      const snapshot = await getDocs(q);
-      newReadings = snapshot.docs.map(doc => {
-        const data = doc.data() as NoiseReading;
-        return {
-          id: doc.id,
-          ...data,
-        };
-      });
+      newReadings = await fetchReadings(q);
       
       // Update IndexedDB with new readings
       if (newReadings.length > 0) {
@@ -243,11 +255,7 @@ export async function forceFullSync(): Promise<{
       orderBy('timestamp', 'desc')
     );
 
-    const snapshot = await getDocs(q);
-    const newReadings = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as NoiseReading[];
+    const newReadings = await fetchReadings(q);
 
     // Save to IndexedDB
     await localDb.setManyReadings(newReadings);
