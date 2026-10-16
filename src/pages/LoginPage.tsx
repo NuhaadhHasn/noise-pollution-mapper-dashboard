@@ -140,7 +140,7 @@ export default function LoginPage() {
                 Noise Mapper Dashboard
               </CardTitle>
               <CardDescription className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} text-xs md:text-sm`}>
-                Sign in to access your research dashboard
+                Sign in with your Noise Mapper app account
               </CardDescription>
             </CardHeader>
             
@@ -226,20 +226,6 @@ export default function LoginPage() {
                     'Sign In'
                   )}
                 </Button>
-
-                {/* Don't have an account */}
-                <div className="text-center">
-                  <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    Don't have an account?{' '}
-                    <a 
-                      href="mailto:admin@noisemapper.lk?subject=Dashboard Access Request" 
-                      className="font-semibold hover:underline transition-colors text-xs"
-                      style={{ color: themeColor }}
-                    >
-                      Request access
-                    </a>
-                  </p>
-                </div>
               </form>
 
               {/* Divider */}

@@ -11,6 +11,7 @@ import { DataTable } from '@/components/analytics/DataTable';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 import { exportToCSV, exportToJSON } from '@/utils/exportHelpers';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AnalyticsPage() {
   const navigate = useNavigate();
@@ -19,6 +20,9 @@ export default function AnalyticsPage() {
   // The shared, IndexedDB-cached readings (ReadingsProvider). `loading` covers
   // the first cache read or first download; `error` is the last failed sync.
   const { readings, loading, syncing, error, refresh } = useSyncedReadings();
+  // sec-4 (D1-B): every signed-in account may view; only the admin role exports.
+  const { role, roleLoading } = useAuth();
+  const canExport = role === 'admin';
   const markerCount = readings.length;
 
   return (
@@ -139,12 +143,17 @@ export default function AnalyticsPage() {
             )}>
               📊 Data Export
             </h3>
+            {!canExport && !roleLoading && (
+              <p className={cn('text-xs', isDarkMode ? 'text-gray-400' : 'text-gray-600')}>
+                CSV and JSON exports are limited to dashboard administrators.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => exportToCSV(readings, 'noise_readings')}
-                disabled={readings.length === 0}
+                disabled={readings.length === 0 || !canExport}
                 className="text-xs sm:text-sm flex-1 sm:flex-none min-w-[120px]"
               >
                 <Download className="w-3 h-3 sm:mr-1" />
@@ -155,7 +164,7 @@ export default function AnalyticsPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => exportToJSON(readings, 'noise_readings')}
-                disabled={readings.length === 0}
+                disabled={readings.length === 0 || !canExport}
                 className="text-xs sm:text-sm flex-1 sm:flex-none min-w-[120px]"
               >
                 <FileJson className="w-3 h-3 sm:mr-1" />
