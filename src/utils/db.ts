@@ -9,7 +9,9 @@ import type { NoiseReading } from '@/types/NoiseReading';
 import { toMillis } from '@/lib/readings';
 
 const DB_NAME = 'noise-pollution-db';
-const DB_VERSION = 1;
+// v2 (cluster 04.4): rows are normalized DTOs with epoch-ms timestamps. The
+// v1 -> v2 upgrade in openDB() drops every v1 row and the sync metadata.
+const DB_VERSION = 2;
 const STORE_NAME = 'noise_readings';
 const SYNC_STORE_NAME = 'sync_metadata';
 
@@ -71,17 +73,36 @@ function openDB(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
-      
+      // Every upgrade from a v1 (or older) database purges it. A future v3
+      // change adds its own `event.oldVersion < 3` branch below this one.
+      const purgeV1 = event.oldVersion < 2;
+
+      // v1 -> v2 purge (priv-1, bug-1). v1 rows are raw Firestore docs:
+      // Timestamp-shaped objects the 'timestamp' index could not key, rows
+      // deleted or anonymized in Firestore after they were cached, and
+      // pre-2026-09-09 raw userEmail values. Drop them all; the next sync
+      // re-fetches every reading through normalizeReading().
+      if (purgeV1 && db.objectStoreNames.contains(STORE_NAME)) {
+        db.deleteObjectStore(STORE_NAME);
+      }
+
       // Create noise readings store
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        // timestamp is epoch ms since v2, a valid index key. A row with a
+        // null timestamp is simply left out of this index.
         store.createIndex('timestamp', 'timestamp', { unique: false });
         store.createIndex('decibelLevel', 'decibelLevel', { unique: false });
       }
-      
+
       // Create sync metadata store
       if (!db.objectStoreNames.contains(SYNC_STORE_NAME)) {
         db.createObjectStore(SYNC_STORE_NAME, { keyPath: 'key' });
+      } else if (purgeV1) {
+        // Forget lastSyncTime, firstSyncDone and any stale cacheDownloaded,
+        // so the next sync takes the first-sync full fetch instead of a
+        // delta on top of an empty store.
+        request.transaction?.objectStore(SYNC_STORE_NAME).clear();
       }
     };
 
