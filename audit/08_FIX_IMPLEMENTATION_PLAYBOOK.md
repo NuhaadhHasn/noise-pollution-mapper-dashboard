@@ -78,6 +78,23 @@ re-run.
 > The same check fixed two of 11.2's acceptance greps, and step 11.3 (stale-tab recovery)
 > was added from a live production check. **Not verified here:** running the vitest suites
 > (it needs the vitest download) and rules behaviour in the Firestore emulator.
+>
+> **EXECUTED 2026-10-16.** All 12 clusters were applied, one fresh subagent per cluster, each one
+> verified by the orchestrator before the next started. Result: 49 DASH commits
+> (`fb99501`…`bef6056`) and 3 APP commits (`b51ed1d`, `3190f49`, `3fe2dfd`).
+> - **M1 deployed:** the owner said yes after a clean dry run and a check of every app
+>   writer. The APP repo is pushed.
+> - **Deviations, all recorded in the commit bodies:**
+>   - 01.1 installed vitest with `--legacy-peer-deps`. npm 10.8.2 crashes on vitest's
+>     optional peer cycle; a plain `npm install --offline` over the lockfile passes.
+>   - Under D1 = B, 08's D1(A) blocks and 09.3a were skipped, so `/map` still defaults to
+>     "My Readings Only". 09.3's title overstates this; its body explains.
+>   - 10.5 remapped 09's overlays onto the new z-index scale.
+>   - 09.6 was applied without the D5 measurement, as the owner chose.
+> - **§6 locally:** tsc (strict) 0 errors, eslint 0, 198/198 tests, build OK with no
+>   warnings, every grep clean.
+> - **Still open:** the §6.5 owner QA pass in a browser, 11.3's post-deploy curl checks,
+>   and the post-M1 phone smoke test.
 
 1. **Read this document fully first.** Then settle the owner decisions in §3.4
    with the owner in ONE round of questions before the first commit. After
@@ -906,7 +923,7 @@ verbatim from the cluster specs.
 - [ ] 33. `fix(map): default to all readings and show a filter-aware empty overlay instead of a fake pin (ux-2)`
 - [ ] 34. `fix(heatmap): app-aligned dB intensity, correct 0 dB handling and a map legend (bug-7)`
 - [ ] 35. `perf(map): cache marker icons per band and memoize the marker list (perf-3)`
-- [ ] 36. `perf(map): bulk-add markers to the cluster group so chunkedLoading applies (perf-4)` (MERGE, §4.6; skip per D5 if the measurement says so)
+- [x] 36. `perf(map): bulk-add markers to the cluster group in cancellable chunks (perf-4)` (MERGE, §4.6; skip per D5 if the measurement says so)
 
 **Cluster 10 — Accessibility & layout** (`audit/playbook/10_accessibility_layout.md`; apply §4.8, §4.11)
 - [ ] 37. `fix(a11y): sidebar open on desktop, inert when closed, closes on navigate and Esc (a11y-1)`

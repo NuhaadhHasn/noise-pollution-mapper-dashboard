@@ -1371,7 +1371,7 @@ AFTER:
   grep -rnE "\.toDate\(|\.seconds\b" src | grep -vE "^src/lib/(readings\.ts|__tests__/)"
   grep -rn "Invalid location data\|Invalid decibel level" src
   grep -rn "function toDate" src | grep -v "^src/lib/readings.ts"
-  grep -rn "reading\.location" src | grep -v "^src/lib/readings.ts"
+  grep -rnE "reading\.location([^N]|$)" src | grep -v "^src/lib/readings.ts"
   ```
 
 **Verify**
