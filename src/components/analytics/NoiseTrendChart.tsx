@@ -94,6 +94,10 @@ export function NoiseTrendChart() {
     );
   }
 
+  // ux-10: a line needs two points to draw. With a single bucket the max and
+  // min lines would be invisible, so they get dots like the average line.
+  const singleBucket = groupedData.length === 1;
+
   return (
     <div className={cn(
       "p-4 sm:p-6 rounded-lg shadow-lg transition-colors",
@@ -188,7 +192,7 @@ export function NoiseTrendChart() {
               stroke="#F44336" 
               strokeWidth={2}
               strokeDasharray="8 4"
-              dot={false}
+              dot={singleBucket ? { r: 4, fill: '#F44336', stroke: '#F44336' } : false}
               name="Maximum"
             />
             <Line 
@@ -197,7 +201,7 @@ export function NoiseTrendChart() {
               stroke="#4CAF50" 
               strokeWidth={2}
               strokeDasharray="2 3"
-              dot={false}
+              dot={singleBucket ? { r: 4, fill: '#4CAF50', stroke: '#4CAF50' } : false}
               name="Minimum"
             />
           </LineChart>
