@@ -1,22 +1,23 @@
 // Rules drift check (dashboard audit test-1).
 //
 // APP:firestore.rules (the sibling noise_pollution_mapper repo) is the
-// canonical, deployed ruleset; this repo keeps a byte-identical mirror of it
-// and of storage.rules. The APP working tree is CRLF and this one is LF
-// (core.autocrlf=true; both index blobs are LF), so each pair is compared
+// canonical, deployed ruleset; this repo keeps a byte-identical mirror of it.
+// The project has no Storage bucket, so neither repo keeps a storage.rules
+// (build-2). The APP working tree is CRLF and this one is LF
+// (core.autocrlf=true; both index blobs are LF), so the copies are compared
 // after stripping every '\r'. A plain cmp would report drift forever.
 //
 // Usage:  node scripts/check-rules-drift.mjs <path-to-noise_pollution_mapper>
 //         npm run check:rules
-// Exit:   0 = every pair identical modulo CR
-//         1 = a pair differs, or a file is missing or unreadable
+// Exit:   0 = the copies are identical modulo CR
+//         1 = the copies differ, or a file is missing or unreadable
 //         2 = bad usage (no APP path given)
 
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const RULES_FILES = ['firestore.rules', 'storage.rules'];
+const RULES_FILES = ['firestore.rules'];
 
 function readWithoutCr(path) {
   return readFileSync(path, 'utf8').replace(/\r/g, '');
