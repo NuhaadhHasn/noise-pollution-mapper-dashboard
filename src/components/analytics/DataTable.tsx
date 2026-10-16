@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { authorLabel } from '@/lib/authorLabel';
 import { categoryLabel, confidenceLabel, confidenceOf } from '@/lib/categories';
 import { getReadingDate } from '@/lib/readings';
+import { paginate } from '@/lib/pagination';
 import { ChevronUp, ChevronDown, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { noiseBand } from '@/lib/noiseBands';
 import { DbBadge } from '@/components/BandGlyph';
@@ -78,7 +79,7 @@ export function DataTable({ data }: DataTableProps) {
   const { isDarkMode, getCardColor } = useTheme();
 
   // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
+  const [requestedPage, setRequestedPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
   // Sorting state
@@ -131,15 +132,16 @@ export function DataTable({ data }: DataTableProps) {
     });
   }, [data, sortField, sortDirection]);
 
-  const processedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * rowsPerPage;
-    return sortedData.slice(startIndex, startIndex + rowsPerPage);
-  }, [sortedData, currentPage, rowsPerPage]);
+  // ux-9: the page is clamped into 1..totalPages, so a data set that shrinks
+  // (a re-sync) or is empty never shows "1/0" or "Showing -9 to 0".
+  const pageInfo = paginate(sortedData.length, requestedPage, rowsPerPage);
+  const { page: currentPage, totalPages } = pageInfo;
+  const setCurrentPage = (page: number) => setRequestedPage(paginate(sortedData.length, page, rowsPerPage).page);
 
-  // Calculate pagination
-  const totalPages = Math.ceil(data.length / rowsPerPage);
-  const startIndex = (currentPage - 1) * rowsPerPage + 1;
-  const endIndex = Math.min(currentPage * rowsPerPage, data.length);
+  const processedData = useMemo(
+    () => sortedData.slice(pageInfo.sliceStart, pageInfo.sliceEnd),
+    [sortedData, pageInfo.sliceStart, pageInfo.sliceEnd]
+  );
 
   // Handle sort
   const handleSort = (field: SortField) => {
@@ -283,7 +285,9 @@ export function DataTable({ data }: DataTableProps) {
 
         {/* Showing X of Y */}
         <div className={cn('text-sm text-center sm:text-left', isDarkMode ? 'text-gray-400' : 'text-gray-600')}>
-          Showing {startIndex} to {endIndex} of {data.length}
+          {pageInfo.totalRows === 0
+            ? 'Showing 0 of 0'
+            : `Showing ${pageInfo.from} to ${pageInfo.to} of ${pageInfo.totalRows}`}
         </div>
 
         {/* Page navigation */}
