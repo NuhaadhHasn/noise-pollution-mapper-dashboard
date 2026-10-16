@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { titleForPath } from '@/lib/documentTitle';
 import { useTheme } from '@/contexts/ThemeContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import Layout from '@/components/Layout';
+import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // Route-level code splitting (perf-5). Each page is its own chunk, so recharts
@@ -13,6 +15,7 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const MapPage = lazy(() => import('@/pages/MapPage'));
 const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
 
 /** Shown in place of a page while its chunk downloads. */
 function PageSkeleton() {
@@ -38,6 +41,22 @@ function PageSkeleton() {
 /** One Suspense boundary per page, so a page chunk never suspends the whole app. */
 function PageSuspense({ children }: { children: ReactNode }) {
   return <Suspense fallback={<PageSkeleton />}>{children}</Suspense>;
+}
+
+/**
+ * The catch-all route (ux-8). A signed-in user sees it inside the Layout (so the
+ * sidebar and header keep working, and Layout's own error boundary applies); a
+ * signed-out visitor sees it bare, with no redirect, because there is nothing
+ * secret about a missing page.
+ */
+function NotFoundRoute() {
+  const { isAuthenticated } = useAuth();
+  const page = (
+    <PageSuspense>
+      <NotFoundPage />
+    </PageSuspense>
+  );
+  return isAuthenticated ? <Layout>{page}</Layout> : page;
 }
 
 function AppRoutes() {
@@ -102,6 +121,9 @@ function AppRoutes() {
           path="/"
           element={<Navigate to="/dashboard" replace />}
         />
+
+        {/* Anything else: not found, with a link back to the dashboard (ux-8) */}
+        <Route path="*" element={<NotFoundRoute />} />
       </Routes>
     </div>
   );

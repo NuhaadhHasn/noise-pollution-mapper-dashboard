@@ -13,9 +13,13 @@ describe('titleForPath', () => {
     expect(titleForPath('/map/')).toBe('Map \u00b7 Noise Mapper');
   });
 
-  it('falls back to the app title for the root and unknown paths', () => {
+  it('uses the app title for the root', () => {
     expect(titleForPath('/')).toBe(APP_TITLE);
-    expect(titleForPath('/nope')).toBe(APP_TITLE);
     expect(titleForPath('')).toBe(APP_TITLE);
+  });
+
+  it('says so for an unknown path (ux-8)', () => {
+    expect(titleForPath('/nope')).toBe('Page not found · Noise Mapper');
+    expect(titleForPath('/map/extra')).toBe('Page not found · Noise Mapper');
   });
 });

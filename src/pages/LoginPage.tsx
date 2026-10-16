@@ -1,10 +1,12 @@
 // noinspection JSUnusedLocalSymbols
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { passwordResetFailure, resetSentMessage, signInErrorMessage } from '@/lib/authErrors';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { safeReturnPath } from '@/lib/returnPath';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +23,11 @@ import { Eye, EyeOff, Mail, Lock, Loader2, Volume2 } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated } = useAuth();
+  // ux-8: ProtectedRoute leaves the page the visitor asked for in location
+  // state. safeReturnPath accepts internal paths only (no open redirect).
+  const returnPath = safeReturnPath((location.state as { from?: unknown } | null)?.from);
   const { isDarkMode, getTextColor, primaryColor } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,7 +46,7 @@ export default function LoginPage() {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigate('/dashboard');
+      navigate(returnPath, { replace: true });
     } catch (err: unknown) {
       // a11y-7: plain-language copy chosen by err.code, never the raw SDK text.
       setError(signInErrorMessage(err));
@@ -76,6 +83,12 @@ export default function LoginPage() {
   };
 
   const themeColor = FLUTTER_THEME_COLORS.themeColors[primaryColor as keyof typeof FLUTTER_THEME_COLORS.themeColors];
+
+  // ux-8: a signed-in user has no use for the sign-in form. This also carries a
+  // fresh sign-in on to the return path once the auth listener reports the user.
+  if (isAuthenticated) {
+    return <Navigate to={returnPath} replace />;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">

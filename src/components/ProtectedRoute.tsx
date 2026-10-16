@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import Layout from '@/components/Layout';
 
@@ -8,6 +8,7 @@ interface ProtectedRouteProps {
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
 
   // Show loading while checking auth
   if (isLoading) {
@@ -21,9 +22,11 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  // Redirect to login if not authenticated
+  // Redirect to login if not authenticated, remembering the page asked for so
+  // sign-in can return to it (ux-8). LoginPage validates it with safeReturnPath.
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    const from = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to="/login" replace state={{ from }} />;
   }
 
   // Wrap authenticated pages in Layout

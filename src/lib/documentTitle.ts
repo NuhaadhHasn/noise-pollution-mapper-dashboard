@@ -14,9 +14,10 @@ const ROUTE_NAMES: Record<string, string> = {
   '/login': 'Sign in',
 };
 
-/** 'Dashboard · Noise Mapper' for a known route, else the app title. */
+/** 'Dashboard · Noise Mapper' for a known route, 'Page not found' for an unknown path, else the app title. */
 export function titleForPath(pathname: string): string {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   const name = ROUTE_NAMES[path];
-  return name ? `${name} \u00b7 Noise Mapper` : APP_TITLE;
+  if (name) return `${name} \u00b7 Noise Mapper`;
+  return path === '/' || path === '' ? APP_TITLE : 'Page not found \u00b7 Noise Mapper';
 }
