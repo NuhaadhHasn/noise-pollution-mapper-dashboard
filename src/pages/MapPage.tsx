@@ -4,6 +4,7 @@ import { MapComponent } from '@/components/map/MapContainer';
 import { NoiseMarkers } from '@/components/map/NoiseMarkers';
 import MarkerClusterGroup from '@/components/map/MarkerClusterGroup';
 import { HeatmapLayer } from '@/components/map/HeatmapLayer';
+import { MapLegend } from '@/components/map/MapLegend';
 import { SyncStatus } from '@/components/map/SyncStatus';
 import { UserFilterToggle } from '@/components/map/UserFilterToggle';
 import { DateRangeFilter } from '@/components/map/DateRangeFilter';
@@ -157,6 +158,9 @@ export default function MapPage() {
           <span className="font-semibold text-sm">{filteredReadings.length} markers</span>
         </div>
       </div>
+
+      {/* Legend: what the pin colours and the heat layer mean */}
+      <MapLegend showHeatmap={showHeatmap} />
 
       {/* Map - Full Screen, No Scrollbars */}
       <div

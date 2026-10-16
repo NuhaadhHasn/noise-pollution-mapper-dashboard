@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { filterReadings, presetRange, presetSummary } from '@/lib/mapFilters';
+import {
+  buildHeatPoints,
+  filterReadings,
+  heatIntensity,
+  presetRange,
+  presetSummary,
+} from '@/lib/mapFilters';
 import type { FilterableReading, ReadingFilters } from '@/lib/mapFilters';
 
 interface TestReading extends FilterableReading {
@@ -161,5 +167,73 @@ describe('presetSummary', () => {
     expect(presetSummary('7d', NOW)).toBe(
       `From ${new Date(2026, 9, 9).toLocaleDateString()} to ${new Date(2026, 9, 16, 23, 59, 59, 999).toLocaleDateString()}`,
     );
+  });
+});
+
+describe('heatIntensity', () => {
+  it('uses the app scale: clamp(dB / 120)', () => {
+    expect(heatIntensity(60)).toBe(0.5);
+    expect(heatIntensity(120)).toBe(1);
+    expect(heatIntensity(150)).toBe(1);
+    expect(heatIntensity(-5)).toBe(0);
+  });
+
+  it('treats 0 dB as a real reading, not as a default (bug-7)', () => {
+    expect(heatIntensity(0)).toBe(0);
+  });
+
+  it('returns null for anything that is not a finite number', () => {
+    expect(heatIntensity(Number.NaN)).toBeNull();
+    expect(heatIntensity(Infinity)).toBeNull();
+    expect(heatIntensity('60')).toBeNull();
+    expect(heatIntensity(undefined)).toBeNull();
+  });
+});
+
+describe('buildHeatPoints', () => {
+  it('keeps a 0 dB reading at intensity 0', () => {
+    expect(buildHeatPoints([reading({ decibelLevel: 0 })])).toEqual([[6.9, 79.86, 0]]);
+  });
+
+  it('merges readings at one site into a single point with the mean intensity', () => {
+    const points = buildHeatPoints([
+      reading({ id: 'a', decibelLevel: 30 }),
+      reading({ id: 'b', decibelLevel: 90 }),
+    ]);
+    expect(points).toHaveLength(1);
+    expect(points[0][2]).toBeCloseTo(0.5, 6);
+  });
+
+  it('does not let repeat quiet recordings add up: 20 readings of 30 dB stay at 0.25', () => {
+    const quiet = Array.from({ length: 20 }, (_, i) => reading({ id: `q${i}`, decibelLevel: 30 }));
+    const points = buildHeatPoints(quiet);
+    expect(points).toHaveLength(1);
+    expect(points[0][2]).toBeCloseTo(0.25, 6);
+  });
+
+  it('keeps sites that differ at the 4th decimal apart', () => {
+    const points = buildHeatPoints([
+      reading({ id: 'a', latitude: 6.9 }),
+      reading({ id: 'b', latitude: 6.9005 }),
+    ]);
+    expect(points).toHaveLength(2);
+  });
+
+  it('places a merged point at the mean position of its readings', () => {
+    const points = buildHeatPoints([
+      reading({ id: 'a', latitude: 6.90001 }),
+      reading({ id: 'b', latitude: 6.90003 }),
+    ]);
+    expect(points).toHaveLength(1);
+    expect(points[0][0]).toBeCloseTo(6.90002, 6);
+  });
+
+  it('skips readings without a position or a finite dB', () => {
+    const points = buildHeatPoints([
+      reading({ id: 'a', latitude: undefined }),
+      reading({ id: 'b', decibelLevel: Number.NaN }),
+      reading({ id: 'c', decibelLevel: 'x' }),
+    ]);
+    expect(points).toEqual([]);
   });
 });

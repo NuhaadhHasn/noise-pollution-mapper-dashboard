@@ -1,72 +1,66 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet.heat';
 import type { NoiseReading } from '@/types/NoiseReading';
-import { getCoordinates } from '@/lib/readings';
+import { buildHeatPoints, HEAT_MAX_DB } from '@/lib/mapFilters';
+import { LOW_BAND_BELOW_DB, MODERATE_BAND_MAX_DB, NOISE_BANDS } from '@/lib/noiseBands';
 
 interface HeatmapLayerProps {
+  /** Already-filtered readings: the same array the markers and the badge use. */
   readings: NoiseReading[];
   visible?: boolean;
 }
 
+// Gradient stops sit on the band thresholds (the same 50 / 70 dB the pins and
+// the legend use), on the 0..1 scale heatIntensity() produces (dB / 120). A
+// lone reading therefore lands on its own band colour: below 50 dB green,
+// 70 dB orange, 100 dB and up red. Colours come from the shared band module.
+const LOW_STOP = LOW_BAND_BELOW_DB / HEAT_MAX_DB;
+const MODERATE_STOP = MODERATE_BAND_MAX_DB / HEAT_MAX_DB;
+
+const HEAT_GRADIENT: { [stop: number]: string } = {
+  0.0: NOISE_BANDS.low.color,
+  [LOW_STOP]: NOISE_BANDS.low.color,
+  [MODERATE_STOP]: NOISE_BANDS.moderate.color,
+  1.0: NOISE_BANDS.high.color,
+};
+
 /**
- * HeatmapLayer - Displays noise pollution density heatmap
- * 
+ * HeatmapLayer - Displays where readings concentrate, tinted by loudness
+ *
  * Features:
- * - Color-coded by noise level (green → yellow → orange → red)
- * - Intensity based on dB level
- * - Real-time updates
- * - Performance optimized for 3000+ markers
+ * - Intensity is dB / 120, clamped, exactly like the app's heatmap; 0 dB is a real value
+ * - Readings at one site are averaged first, so repeat recordings do not stack
+ * - Gradient stops follow the shared noise bands (convention 2.11)
+ * - Builds nothing while hidden
  */
 export function HeatmapLayer({ readings, visible = true }: HeatmapLayerProps) {
   const map = useMap();
+  const heatPoints = useMemo(() => buildHeatPoints(readings), [readings]);
 
   useEffect(() => {
-    if (!readings || readings.length === 0) return;
+    if (!visible || heatPoints.length === 0) return;
 
-    // Convert readings to heat points [lat, lng, intensity]
-    const heatPoints: [number, number, number][] = readings.map(reading => {
-      // Extract coordinates through the shared helper (flat, finite lat/lng)
-      const coords = getCoordinates(reading);
-      const lat = coords?.lat;
-      const lng = coords?.lng;
-
-      // Normalize intensity based on dB level (0-1 scale)
-      // 30dB = 0.0 (quietest), 100dB = 1.0 (loudest)
-      const intensity = reading.decibelLevel 
-        ? Math.min(1.0, Math.max(0.0, (reading.decibelLevel - 30) / 70))
-        : 0.5;
-
-      return [lat || 0, lng || 0, intensity] as [number, number, number];
-    }).filter((point): point is [number, number, number] => point[0] !== 0 && point[1] !== 0); // Filter invalid coordinates
-
-    // Create heat layer (leaflet.heat plugin)
+    // leaflet.heat sums the points that share a screen cell, scaled by
+    // 1 / 2^(maxZoom - zoom) (HeatLayer.js _redraw). maxZoom 12 keeps zoomed-out
+    // views readable; at HEAD's 17 every cell was scaled by 1/1024 at the
+    // default zoom 7 and sat on the minOpacity floor.
     const heatLayer = L.heatLayer(heatPoints, {
       radius: 25,
       blur: 15,
-      maxZoom: 17,
-      minOpacity: 0.4,
+      maxZoom: 12,
+      minOpacity: 0.35, // below LOW_STOP, so a lone quiet reading keeps the Low colour
       max: 1.0,
-      gradient: {
-        0.0: '#4CAF50',   // Green (quiet: <50dB)
-        0.35: '#FFEB3B',  // Yellow (moderate: 50-60dB)
-        0.65: '#FF9800',  // Orange (loud: 60-70dB)
-        1.0: '#F44336'    // Red (very loud: >70dB)
-      },
-      pane: 'overlayPane'
+      gradient: HEAT_GRADIENT,
+      pane: 'overlayPane',
     });
+    heatLayer.addTo(map);
 
-    // Add to map if visible
-    if (visible) {
-      heatLayer.addTo(map);
-    }
-
-    // Cleanup
     return () => {
       map.removeLayer(heatLayer);
     };
-  }, [readings, visible, map]);
+  }, [heatPoints, visible, map]);
 
   return null;
 }

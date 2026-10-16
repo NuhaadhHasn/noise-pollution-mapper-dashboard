@@ -110,3 +110,51 @@ export function filterReadings<T extends FilterableReading>(
     return true;
   });
 }
+
+/** A reading at or above this dB is drawn at full heat. Same 0-120 dB scale as the app (heatmap_point.dart:65-70). */
+export const HEAT_MAX_DB = 120;
+
+/**
+ * Heat intensity (0..1) for a dB value, or null when it is not a finite
+ * number. 0 dB is a real reading and maps to 0, not to a default (bug-7).
+ */
+export function heatIntensity(db: unknown): number | null {
+  if (typeof db !== 'number' || !Number.isFinite(db)) return null;
+  return Math.min(1, Math.max(0, db / HEAT_MAX_DB));
+}
+
+/**
+ * Heat points [lat, lng, intensity] for leaflet.heat. Readings at the same
+ * site (positions equal to 4 decimals, about 11 m) become ONE point whose
+ * intensity is the mean dB of the site, so twenty repeat recordings of a quiet
+ * spot cannot add up to 'very loud' (bug-7). leaflet.heat still sums nearby
+ * sites, so the map shows where readings concentrate, tinted by loudness.
+ */
+export function buildHeatPoints(
+  readings: readonly FilterableReading[],
+): Array<[number, number, number]> {
+  const sites = new Map<string, { lat: number; lng: number; db: number; count: number }>();
+  for (const reading of readings) {
+    const coords = getCoordinates(reading);
+    const db = reading.decibelLevel;
+    if (!coords || typeof db !== 'number' || !Number.isFinite(db)) continue;
+    const key = `${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}`;
+    const site = sites.get(key);
+    if (site) {
+      site.lat += coords.lat;
+      site.lng += coords.lng;
+      site.db += db;
+      site.count += 1;
+    } else {
+      sites.set(key, { lat: coords.lat, lng: coords.lng, db, count: 1 });
+    }
+  }
+
+  const points: Array<[number, number, number]> = [];
+  for (const site of sites.values()) {
+    const intensity = heatIntensity(site.db / site.count);
+    if (intensity === null) continue;
+    points.push([site.lat / site.count, site.lng / site.count, intensity]);
+  }
+  return points;
+}
