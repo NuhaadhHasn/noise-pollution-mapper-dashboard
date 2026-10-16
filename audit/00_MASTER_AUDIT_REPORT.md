@@ -222,6 +222,42 @@ The owner already ran it once, on 2026-10-16 at about 00:20. That run **answered
 - **Not verified.** Medium and Low findings were not adversarially re-checked. Treat `unverified` as "re-read the cited lines before fixing".
 - **Not re-audited.** The Flutter app's audit is closed. Issues it already covers are not re-reported unless the dashboard is independently affected.
 
+## Shipping record (2026-10-16)
+
+Everything below shipped on 2026-10-16, the same day as the audit. Playbook references are to `08_FIX_IMPLEMENTATION_PLAYBOOK.md`.
+
+**What shipped**
+
+| Repo | Range | Commits | Content |
+|------|-------|---------|---------|
+| DASH (private) | `353bbdd..a7a644d` | 76 | The 12-cluster playbook (49 commits, `fb99501`..`bef6056`), every section 7 follow-up, a Firestore rules emulator suite (`b637437`, run in CI by `01c04ec`), `noUnusedLocals`/`noUnusedParameters` and a dead-code sweep, and the enforced Content-Security-Policy (`a7a644d`). |
+| APP (public) | `9b08e68..5c6dab2` | 11 | The three rules commits (`b51ed1d`, `3190f49`, `3fe2dfd`), build-2 (`decbe0c`, Storage target and `storage.rules` removed), priv-6 (`83df6e1`, legacy offline-queue author label masked), and six fixes for bugs found on a real phone (`75ad470`, `e981084`, `6d3a69e`, `d857354`, `5779a42`, `5c6dab2`). |
+
+**Deploys**
+
+- **Firestore rules.** The merged, validated ruleset was deployed from the APP repo with `firebase deploy --only firestore:rules,firestore:indexes` after the owner approved the diff (M1). It replaced ruleset `ebff82af-...` (created 2026-09-09). `firestore.indexes.json` was unchanged, so the index part was a no-op. The Firebase console keeps the ruleset history for rollback.
+- **Vercel.** Pushing DASH `master` is a production deploy. The build carries the code splitting, stale-tab recovery and security headers.
+- **CSP.** The policy first shipped report-only (`0e46946`), was checked on the live site, then enforced (`a7a644d`).
+
+**Verification**
+
+- **Local gates.** `tsc -b` (strict), eslint, the vitest suites, the rules emulator suite (20 allow and 46 deny cases at first commit) and the build all pass.
+- **Browser QA.** The owner QA pass in a browser (playbook section 6.5) was run against the fixed dashboard.
+- **Live CSP check.** A headless session signed in on the production site and walked `/dashboard`, `/map` (OSM tiles, heatmap toggle), `/analytics` (10 charts, CSV export) and sign-out with zero CSP reports and zero console errors before the policy was enforced.
+- **Phone QA.** The app was exercised on a real phone; the six phone-found fixes above came out of that pass.
+
+**Not shipped, by decision**
+
+- **Migrating to the SDK `persistentLocalCache`.** See the decision note in playbook section 7.
+
+**Still open**
+
+- **App-side sync cursor (data-1, complete fix).** It needs an app release that writes `syncedAt`, plus a rules whitelist update. The 24 h full replace stays as the backstop.
+- **Owner actions.** Rotate and restrict keys per the app's `docs/SECURITY_ROTATION.md`, and enrol in Play App Signing.
+- **Classification.** Re-test with clean samples on a device (APP `audit/12_CLASSIFICATION_FIELD_TEST.md`).
+- **Not verified on device.** Recording duration, permission and donation flows.
+- **Leftover.** `firebase_storage` is still listed in the app's `pubspec.yaml`, although nothing in `lib/` imports it.
+
 ## Appendix: Checked and refuted (do not re-report)
 
 | Claim checked | Result | Basis |
