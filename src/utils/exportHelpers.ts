@@ -1,6 +1,7 @@
 import type { NoiseReading } from '@/types/NoiseReading';
 import type { UserInfo } from '@/services/userService';
 import { format } from 'date-fns';
+import { categoryLabel, confidenceOf, confidencePercent } from '@/lib/categories';
 import { getCoordinates, getReadingDate } from '@/lib/readings';
 
 /**
@@ -46,9 +47,9 @@ export function exportToCSV(data: NoiseReading[], userMap?: Map<string, UserInfo
       lat,
       lng,
       reading.decibelLevel.toFixed(1),
-      `"${reading.soundCategory || reading.soundClass || 'Unknown'}"`,
+      `"${categoryLabel(reading)}"`,
       `"${reading.soundType || 'Unknown'}"`,
-      ((reading.confidence || 0) * 100).toFixed(2),
+      confidencePercent(reading)?.toFixed(2) ?? '',
       `"${userMap?.get(reading.userId)?.email || reading.userId || 'Unknown'}"`
     ].join(',');
   });
@@ -91,9 +92,9 @@ export function exportToJSON(data: NoiseReading[], filename: string = 'noise_rea
       measurement: {
         decibelLevel: reading.decibelLevel,
         noiseLevel: getNoiseLevel(reading.decibelLevel),
-        soundCategory: reading.soundCategory || reading.soundClass || 'Unknown',
+        soundCategory: categoryLabel(reading),
         soundType: reading.soundType || 'Unknown',
-        confidence: reading.confidence || 0
+        confidence: confidenceOf(reading)
       },
       userId: reading.userId || 'Unknown'
     }))

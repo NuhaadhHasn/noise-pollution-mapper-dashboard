@@ -3,7 +3,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
-import { categoryInfo, categoryOf } from '@/lib/categories';
+import { categoryInfo, categoryOf, UNCLASSIFIED } from '@/lib/categories';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 
 interface CategoryData {
@@ -30,6 +30,9 @@ export function CategoryChart() {
       // fold into 'Speech'; a reading with no soundClass is 'Unclassified' and is
       // never merged into the real 'Other' (data-3).
       const category = categoryOf(reading);
+      // D2: readings with no soundClass are not charted (the app's own analytics
+      // skips them too, analytics_screen.dart:232-234). The caption below counts them.
+      if (category === UNCLASSIFIED) return;
       if (!groups.has(category)) {
         groups.set(category, { totalDb: 0, count: 0 });
       }
@@ -50,6 +53,17 @@ export function CategoryChart() {
     return result;
   }, [readings]);
 
+  // Readings the app left unclassified are not charted (D2). The caption says
+  // how many were left out; at audit time that was 2,683 of 3,374 in production.
+  const unclassifiedCount = useMemo(
+    () => readings.filter((reading) => categoryOf(reading) === UNCLASSIFIED).length,
+    [readings]
+  );
+  const unclassifiedCaption =
+    unclassifiedCount > 0
+      ? `${unclassifiedCount.toLocaleString('en-US')} of ${readings.length.toLocaleString('en-US')} readings are unclassified and not shown`
+      : null;
+
   if (loading) {
     return <ChartSkeleton showLegend />;
   }
@@ -68,8 +82,15 @@ export function CategoryChart() {
             <p className={cn("text-xs mt-1", isDarkMode ? "text-gray-500" : "text-gray-500")}>
               {error
                 ? 'Categories appear once the readings have been downloaded.'
-                : 'No readings have been uploaded from the mobile app yet.'}
+                : unclassifiedCount > 0
+                  ? 'None of the readings has a sound category yet.'
+                  : 'No readings have been uploaded from the mobile app yet.'}
             </p>
+            {!error && unclassifiedCaption && (
+              <p className={cn("text-xs mt-2", isDarkMode ? "text-gray-400" : "text-gray-600")}>
+                {unclassifiedCaption}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -184,6 +205,12 @@ export function CategoryChart() {
           </div>
         ))}
       </div>
+
+      {unclassifiedCaption && (
+        <p className={cn("mt-3 text-xs", isDarkMode ? "text-gray-400" : "text-gray-600")}>
+          {unclassifiedCaption}
+        </p>
+      )}
     </div>
   );
 }

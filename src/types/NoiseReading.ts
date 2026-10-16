@@ -13,7 +13,6 @@ export interface NoiseReading {
   latitude: number;            // finite, -90..90; dropped otherwise
   longitude: number;           // finite, -180..180; dropped otherwise
   locationName?: string;
-  soundCategory?: string;      // never written by any app version; kept ONLY until 06.3 removes it
   soundClass?: string;         // raw app value; absent = unclassified
   soundType?: 'Pollution' | 'Ambient';
   confidence?: number;         // absent when unclassified

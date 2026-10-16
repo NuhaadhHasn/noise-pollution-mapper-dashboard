@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { categoryLabel, confidenceLabel, confidenceOf } from '@/lib/categories';
 import { getReadingDate } from '@/lib/readings';
 import { ChevronUp, ChevronDown, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
@@ -71,16 +72,17 @@ export function DataTable({ data, userMap }: DataTableProps) {
           bVal = b.decibelLevel;
           break;
         case 'soundCategory':
-          aVal = a.soundCategory || a.soundClass || '';
-          bVal = b.soundCategory || b.soundClass || '';
+          aVal = categoryLabel(a);
+          bVal = categoryLabel(b);
           break;
         case 'soundType':
           aVal = a.soundType || '';
           bVal = b.soundType || '';
           break;
         case 'confidence':
-          aVal = a.confidence || 0;
-          bVal = b.confidence || 0;
+          // An absent confidence sorts below every real value (last when descending).
+          aVal = confidenceOf(a) ?? -1;
+          bVal = confidenceOf(b) ?? -1;
           break;
         default:
           aVal = 0;
@@ -218,7 +220,7 @@ export function DataTable({ data, userMap }: DataTableProps) {
                     </span>
                   </TableCell>
                   <TableCell className={cn(isDarkMode ? 'text-gray-300' : 'text-gray-700')}>
-                    {reading.soundCategory || reading.soundClass || 'Unknown'}
+                    {categoryLabel(reading)}
                   </TableCell>
                   <TableCell>
                     <span
@@ -235,18 +237,22 @@ export function DataTable({ data, userMap }: DataTableProps) {
                     </span>
                   </TableCell>
                   <TableCell className={cn(isDarkMode ? 'text-gray-300' : 'text-gray-700')}>
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${(reading.confidence || 0) * 100}%`,
-                            backgroundColor: reading.confidence > 0.7 ? '#4CAF50' : reading.confidence > 0.4 ? '#FF9800' : '#F44336'
-                          }}
-                        />
+                    {confidenceOf(reading) === null ? (
+                      <span>{confidenceLabel(reading)}</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${(confidenceOf(reading) ?? 0) * 100}%`,
+                              backgroundColor: (confidenceOf(reading) ?? 0) > 0.7 ? '#4CAF50' : (confidenceOf(reading) ?? 0) > 0.4 ? '#FF9800' : '#F44336'
+                            }}
+                          />
+                        </div>
+                        <span>{confidenceLabel(reading)}</span>
                       </div>
-                      <span>{((reading.confidence || 0) * 100).toFixed(0)}%</span>
-                    </div>
+                    )}
                   </TableCell>
                   <TableCell className={cn(isDarkMode ? 'text-gray-300' : 'text-gray-700')}>
                     {userMap?.get(reading.userId)?.email || reading.userId || 'Unknown'}

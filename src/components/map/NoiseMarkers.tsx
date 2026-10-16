@@ -3,6 +3,7 @@ import type { LatLngExpression } from 'leaflet';
 import { Icon } from 'leaflet';
 import { useEffect } from 'react';
 import type { NoiseReading } from '@/types/NoiseReading';
+import { categoryLabel, categoryOf, confidenceLabel } from '@/lib/categories';
 import { format } from 'date-fns';
 import { getCoordinates, getReadingDate } from '@/lib/readings';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
@@ -93,10 +94,9 @@ export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMa
       }
     }
     
-    // Apply category filter (check both soundCategory and soundClass)
+    // Apply category filter (canonical category: manual 'Speech-*' reports match 'Speech')
     if (filters?.categories && filters.categories.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const category = (reading as any).soundCategory || (reading as any).soundClass;
+      const category = categoryOf(reading);
       if (!filters.categories.includes(category)) {
         return false;
       }
@@ -167,9 +167,8 @@ export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMa
         const { lat, lng } = coords;
         const readingDate = getReadingDate(reading);
 
-        // Get category (check both soundCategory and soundClass)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const category = (reading as any).soundCategory || (reading as any).soundClass || 'Unknown';
+        // Category text: the stored soundClass, or 'Unclassified' when absent
+        const category = categoryLabel(reading);
 
         return (
           <Marker
@@ -221,7 +220,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMa
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">Confidence:</span>
                     <span className="text-sm font-medium">
-                      {((reading.confidence || 0) * 100).toFixed(1)}%
+                      {confidenceLabel(reading, 1)}
                     </span>
                   </div>
 
