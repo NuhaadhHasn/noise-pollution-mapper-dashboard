@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { useTheme } from '@/contexts/ThemeContext';
 import type { NoiseReading } from '@/types/NoiseReading';
 import {
@@ -86,6 +87,24 @@ export function DataTable({ data }: DataTableProps) {
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
+  // ux-11: the screen view is paginated, but a printout must carry every row.
+  // While the browser is preparing to print (the Print button and Ctrl+P both
+  // fire beforeprint), the table renders every sorted row instead of the
+  // current page. flushSync puts the rows in the DOM before the print layout
+  // is taken, and afterprint switches back to the paginated view. The
+  // pagination controls are hidden in print by the .no-print class.
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    const beforePrint = () => flushSync(() => setPrinting(true));
+    const afterPrint = () => setPrinting(false);
+    window.addEventListener('beforeprint', beforePrint);
+    window.addEventListener('afterprint', afterPrint);
+    return () => {
+      window.removeEventListener('beforeprint', beforePrint);
+      window.removeEventListener('afterprint', afterPrint);
+    };
+  }, []);
+
   // perf-6: sorting and paging are two memos. The sort depends only on the data
   // and the sort order, so turning a page or changing the page size re-slices
   // the sorted array and never re-sorts it.
@@ -138,10 +157,11 @@ export function DataTable({ data }: DataTableProps) {
   const { page: currentPage, totalPages } = pageInfo;
   const setCurrentPage = (page: number) => setRequestedPage(paginate(sortedData.length, page, rowsPerPage).page);
 
-  const processedData = useMemo(
+  const pageRows = useMemo(
     () => sortedData.slice(pageInfo.sliceStart, pageInfo.sliceEnd),
     [sortedData, pageInfo.sliceStart, pageInfo.sliceEnd]
   );
+  const processedData = printing ? sortedData : pageRows;
 
   // Handle sort
   const handleSort = (field: SortField) => {
@@ -256,8 +276,8 @@ export function DataTable({ data }: DataTableProps) {
         </Table>
       </div>
 
-      {/* Pagination Controls */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      {/* Pagination Controls (hidden in print: the printout has every row) */}
+      <div className="no-print flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         {/* Rows per page */}
         <div className="flex items-center gap-2">
           <span className={cn('text-sm hidden sm:inline', isDarkMode ? 'text-gray-400' : 'text-gray-600')}>
