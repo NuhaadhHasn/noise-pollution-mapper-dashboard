@@ -48,7 +48,7 @@ export default function DashboardPage() {
           'text-sm sm:text-base transition-colors',
           isDarkMode ? 'text-gray-400' : 'text-gray-600'
         )}>
-          Real-time noise pollution monitoring for Sri Lanka
+          Community noise readings for Sri Lanka, synced from the mobile app
         </p>
       </header>
 
