@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,12 +20,62 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
+// Tailwind's `lg` breakpoint. From here up the sidebar is a persistent column;
+// below it the sidebar is a drawer.
+const DESKTOP_QUERY = '(min-width: 1024px)';
+
+function isDesktopViewport(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia(DESKTOP_QUERY).matches;
+}
+
+// A closed sidebar is inert, so focus that was inside it must be handed to a
+// control that is still visible: the header menu button of the current layout.
+function focusMenuButton(): void {
+  const id = isDesktopViewport() ? 'sidebar-toggle-desktop' : 'sidebar-toggle-mobile';
+  window.requestAnimationFrame(() => document.getElementById(id)?.focus());
+}
+
+const NAV_ITEMS = [
+  { to: '/dashboard', icon: '📊', label: 'Dashboard' },
+  { to: '/map', icon: '📍', label: 'Map' },
+  { to: '/analytics', icon: '📈', label: 'Analytics' },
+] as const;
+
 export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, signOut, isAuthenticated } = useAuth();
   const { isDarkMode, theme, setTheme, primaryColor, setPrimaryColor } = useTheme();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Start closed on mobile
+  // Open by default from lg up (a persistent column); closed below lg (a drawer).
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => isDesktopViewport());
+
+  // Crossing the lg breakpoint resets the sidebar to that layout's default.
+  useEffect(() => {
+    const query = window.matchMedia(DESKTOP_QUERY);
+    const onChange = (event: MediaQueryListEvent) => setIsSidebarOpen(event.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+
+  // Esc closes the drawer. Not on desktop, where the sidebar is a column, and
+  // not when another layer (a Radix menu or dialog) already consumed the key.
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || isDesktopViewport()) return;
+      setIsSidebarOpen(false);
+      focusMenuButton();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isSidebarOpen]);
+
+  // Choosing a destination closes the drawer on phones and tablets.
+  const closeDrawerOnNavigate = () => {
+    if (isDesktopViewport()) return;
+    setIsSidebarOpen(false);
+    focusMenuButton();
+  };
 
   const handleSignOut = async () => {
     try {
@@ -43,16 +94,19 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Mobile Overlay - closes sidebar when tapped */}
+      {/* Mobile Overlay - closes sidebar when tapped; Esc does the same from the keyboard */}
       {isSidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          aria-hidden="true"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar. While closed it is inert: out of the tab order and hidden from assistive technology. */}
       <aside
+        id="app-sidebar"
+        inert={!isSidebarOpen}
         className={cn(
           'fixed lg:static inset-y-0 left-0 z-[500] flex flex-col border-r transition-all duration-300 overflow-hidden',
           isSidebarOpen ? 'w-64' : 'w-0',
@@ -70,47 +124,39 @@ export default function Layout({ children }: LayoutProps) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setIsSidebarOpen(false)}
+            aria-label="Close navigation menu"
+            onClick={() => {
+              setIsSidebarOpen(false);
+              focusMenuButton();
+            }}
             className={cn(
               'transition-colors',
               isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
             )}
           >
-            ✕
+            <span aria-hidden="true">✕</span>
           </Button>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 overflow-hidden">
-          <Button
-            variant="ghost"
-            className={cn(
-              'w-full justify-start transition-colors whitespace-nowrap',
-              isDarkMode ? 'text-gray-300 hover:text-white hover:bg-gray-700' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-            )}
-            onClick={() => navigate('/dashboard')}
-          >
-            📊 Dashboard
-          </Button>
-          <Button
-            variant="ghost"
-            className={cn(
-              'w-full justify-start transition-colors whitespace-nowrap',
-              isDarkMode ? 'text-gray-300 hover:text-white hover:bg-gray-700' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-            )}
-            onClick={() => navigate('/map')}
-          >
-            📍 Map
-          </Button>
-          <Button
-            variant="ghost"
-            className={cn(
-              'w-full justify-start transition-colors whitespace-nowrap',
-              isDarkMode ? 'text-gray-300 hover:text-white hover:bg-gray-700' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-            )}
-            onClick={() => navigate('/analytics')}
-          >
-            📈 Analytics
-          </Button>
+        <nav aria-label="Primary" className="flex-1 p-4 space-y-2 overflow-hidden">
+          {NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={closeDrawerOnNavigate}
+              className={({ isActive }) =>
+                cn(
+                  buttonVariants({ variant: 'ghost' }),
+                  'w-full justify-start transition-colors whitespace-nowrap',
+                  isDarkMode ? 'text-gray-300 hover:text-white hover:bg-gray-700' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100',
+                  isActive && (isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-900')
+                )
+              }
+            >
+              <span aria-hidden="true">{item.icon}</span>
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
 
         {/* Theme Settings */}
@@ -127,24 +173,28 @@ export default function Layout({ children }: LayoutProps) {
               <Button
                 size="sm"
                 variant={theme === 'light' ? 'default' : 'outline'}
+                aria-label="Light theme"
+                aria-pressed={theme === 'light'}
                 onClick={() => {
                   console.log('[Layout] Setting theme to light');
                   setTheme('light');
                 }}
                 className="flex-1"
               >
-                ☀️
+                <span aria-hidden="true">☀️</span>
               </Button>
               <Button
                 size="sm"
                 variant={theme === 'dark' ? 'default' : 'outline'}
+                aria-label="Dark theme"
+                aria-pressed={theme === 'dark'}
                 onClick={() => {
                   console.log('[Layout] Setting theme to dark');
                   setTheme('dark');
                 }}
                 className="flex-1"
               >
-                🌙
+                <span aria-hidden="true">🌙</span>
               </Button>
             </div>
           </div>
@@ -163,6 +213,8 @@ export default function Layout({ children }: LayoutProps) {
                     key={color}
                     size="sm"
                     variant={isSelected ? 'default' : 'outline'}
+                    aria-label={`${color} theme colour`}
+                    aria-pressed={isSelected}
                     onClick={() => {
                       console.log('[Layout] Setting primary color to:', color);
                       setPrimaryColor(color);
@@ -211,29 +263,37 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex items-center gap-4">
             {/* Mobile Menu Button - always visible on mobile */}
             <Button
+              id="sidebar-toggle-mobile"
               variant="ghost"
               size="sm"
+              aria-label={isSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={isSidebarOpen}
+              aria-controls="app-sidebar"
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className={cn(
                 'transition-colors lg:hidden',
                 isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
               )}
             >
-              ☰
+              <span aria-hidden="true">☰</span>
             </Button>
-            
+
             {/* Desktop Menu Button - only visible when sidebar closed */}
             {!isSidebarOpen && (
               <Button
+                id="sidebar-toggle-desktop"
                 variant="ghost"
                 size="sm"
+                aria-label="Open navigation menu"
+                aria-expanded={false}
+                aria-controls="app-sidebar"
                 onClick={() => setIsSidebarOpen(true)}
                 className={cn(
                   'transition-colors hidden lg:block',
                   isDarkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
                 )}
               >
-                ☰
+                <span aria-hidden="true">☰</span>
               </Button>
             )}
             
