@@ -68,7 +68,7 @@ export function SyncStatus() {
       <div className="flex items-center gap-2">
         {renderIcon()}
 
-        <span className={`text-xs font-medium ${
+        <span className={`text-xs font-medium max-sm:sr-only ${
           isDarkMode ? 'text-gray-300' : 'text-gray-700'
         }`}>
           {status === 'syncing' && 'Syncing...'}
@@ -83,7 +83,7 @@ export function SyncStatus() {
         </span>
 
         {readings.length > 0 && (
-          <span className={`text-xs ${
+          <span className={`hidden sm:inline text-xs ${
             isDarkMode ? 'text-gray-300' : 'text-gray-600'
           }`}>
             • {readings.length.toLocaleString()} cached (all users)

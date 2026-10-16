@@ -162,10 +162,16 @@
 
 /* Mobile-specific improvements */
 @media (max-width: 640px) {
-  /* Ensure touch targets are at least 44px */
-  button,
-  a {
+  /* Touch targets: at least 44px for the app's own buttons and links. Leaflet's
+     controls (zoom, popup close, attribution) and the table sort buttons keep
+     their designed size, and icon buttons stay square (ux-5). */
+  button:not(.leaflet-container button, .sort-button),
+  a:not(.leaflet-container a) {
     min-height: 44px;
+  }
+
+  button[data-size^='icon']:not(.leaflet-container button) {
+    min-width: 44px;
   }
 
   /* Prevent horizontal scroll */
@@ -173,12 +179,8 @@
     overflow-x: hidden;
   }
 
-  /* Make tables scrollable horizontally */
-  table {
-    display: block;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+  /* Tables scroll horizontally inside ui/table.tsx's overflow-x-auto wrapper.
+     Do not change their display: it strips the table role (ux-5). */
 
   /* Improve chart readability on mobile */
   .recharts-wrapper {
@@ -197,6 +199,24 @@
   /* Optimize grid layouts for tablet */
   .grid {
     gap: 1.5rem;
+  }
+}
+
+/* Respect prefers-reduced-motion (a11y-8): no looping or decorative motion.
+   Durations collapse instead of using `animation: none`, so Radix open/close
+   and Leaflet zoom transitions still complete and fire their end events. This
+   covers the login orbs, sound bars, rings and `animate-pulse`/`animate-ping`/
+   `animate-spin`, and the skeleton shimmer. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

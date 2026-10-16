@@ -78,9 +78,9 @@ export default function MapPage() {
     <div className="relative w-full overflow-hidden bg-gray-200 dark:bg-gray-900" style={{ height: 'calc(100vh - 7rem)' }}>
       {/* Top Bar - Responsive */}
       <div
-        className={`absolute top-4 right-4 z-20 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 h-auto sm:h-12 ${
+        className={`absolute top-4 right-4 z-20 flex flex-col sm:flex-row sm:flex-wrap items-center justify-end gap-2 sm:gap-3 h-auto sm:min-h-12 ${
           isDarkMode ? 'bg-[#2D2640]/95' : 'bg-white/95'
-        } backdrop-blur-sm rounded-lg shadow-lg px-2 sm:px-4 py-2 sm:py-4 transition-all duration-300`}
+        } backdrop-blur-sm rounded-lg shadow-lg px-2 sm:px-4 py-2 transition-all duration-300`}
         style={{ 
           width: 'fit-content',
           maxWidth: 'calc(100vw - 2rem)',
@@ -113,7 +113,7 @@ export default function MapPage() {
         </div>
 
         {/* Controls - Right aligned */}
-        <div className="flex gap-1.5 shrink-0 border-t sm:border-t-0 sm:border-l border-gray-200 dark:border-gray-700 pt-2 sm:pt-0 sm:pl-3">
+        <div className="flex flex-wrap items-center justify-center sm:justify-end gap-1.5 max-w-full border-t sm:border-t-0 sm:border-l border-gray-200 dark:border-gray-700 pt-2 sm:pt-0 sm:pl-3">
           {/* Sync Status: reads and drives the shared ReadingsProvider (bug-4) */}
           <SyncStatus />
 
