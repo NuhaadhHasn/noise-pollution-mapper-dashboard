@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Marker, Popup } from 'react-leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { Icon } from 'leaflet';
@@ -5,6 +6,7 @@ import type { NoiseReading } from '@/types/NoiseReading';
 import { categoryLabel, confidenceLabel } from '@/lib/categories';
 import { format } from 'date-fns';
 import { getCoordinates, getReadingDate } from '@/lib/readings';
+import { NOISE_BANDS, noiseBand } from '@/lib/noiseBands';
 
 // Custom marker icon factory - Pin-shaped marker
 function createMarkerIcon(color: string): Icon {
@@ -27,12 +29,15 @@ function createMarkerIcon(color: string): Icon {
   });
 }
 
-// Get marker color by dB level
-function getMarkerColor(decibelLevel: number): string {
-  if (decibelLevel < 50) return '#4CAF50'; // Green - Quiet
-  if (decibelLevel <= 70) return '#FF9800'; // Orange - Moderate
-  return '#F44336'; // Red - Loud
-}
+// One pin per noise band, built once at module load (perf-3). Before this every
+// marker allocated its own Icon plus a base64 SVG on every render, and
+// react-leaflet called setIcon on every marker because each Icon was a new
+// object. Colours come from the shared band module (convention 2.11).
+const BAND_ICONS = {
+  low: createMarkerIcon(NOISE_BANDS.low.color),
+  moderate: createMarkerIcon(NOISE_BANDS.moderate.color),
+  high: createMarkerIcon(NOISE_BANDS.high.color),
+};
 
 interface NoiseMarkersProps {
   /**
@@ -53,14 +58,12 @@ interface NoiseMarkersProps {
  * - An empty list renders nothing: MapPage shows the filter-aware empty overlay (ux-2)
  */
 export function NoiseMarkers({ readings }: NoiseMarkersProps) {
-  // Nothing to draw: MapPage explains why (ux-2). No marker is ever invented.
-  if (readings.length === 0) {
-    return null;
-  }
-
-  return (
-    <>
-      {readings.map((reading) => {
+  // The marker elements depend only on `readings`. A parent re-render (typing in the
+  // search box, toggling the heatmap or the filter panel) returns the very same
+  // element array, so React skips every Marker and Popup (perf-3).
+  const markers = useMemo(
+    () =>
+      readings.map((reading) => {
         // Coordinates and date through the shared helpers (bug-1)
         const coords = getCoordinates(reading);
         if (!coords) {
@@ -72,11 +75,14 @@ export function NoiseMarkers({ readings }: NoiseMarkersProps) {
         // Category text: the stored soundClass, or 'Unclassified' when absent
         const category = categoryLabel(reading);
 
+        // The cached pin for this reading's noise band (BAND_ICONS), never a new Icon
+        const band = noiseBand(reading.decibelLevel);
+
         return (
           <Marker
             key={reading.id}
             position={[lat, lng] as LatLngExpression}
-            icon={createMarkerIcon(getMarkerColor(reading.decibelLevel))}
+            icon={BAND_ICONS[band.id]}
           >
             <Popup>
               <div className="min-w-[200px]">
@@ -90,7 +96,7 @@ export function NoiseMarkers({ readings }: NoiseMarkersProps) {
                     <span className="text-sm text-gray-600">Noise Level:</span>
                     <span
                       className="px-2 py-1 rounded text-xs font-semibold text-white"
-                      style={{ backgroundColor: getMarkerColor(reading.decibelLevel) }}
+                      style={{ backgroundColor: band.color }}
                     >
                       {reading.decibelLevel.toFixed(1)} dB
                     </span>
@@ -137,7 +143,14 @@ export function NoiseMarkers({ readings }: NoiseMarkersProps) {
             </Popup>
           </Marker>
         );
-      })}
-    </>
+      }),
+    [readings],
   );
+
+  // Nothing to draw: MapPage explains why (ux-2). No marker is ever invented.
+  if (readings.length === 0) {
+    return null;
+  }
+
+  return <>{markers}</>;
 }
