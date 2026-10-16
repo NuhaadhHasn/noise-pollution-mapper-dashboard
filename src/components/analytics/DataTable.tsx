@@ -85,10 +85,11 @@ export function DataTable({ data }: DataTableProps) {
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  // Sort and paginate data
-  const processedData = useMemo(() => {
-    // Sort
-    const sorted = [...data].sort((a, b) => {
+  // perf-6: sorting and paging are two memos. The sort depends only on the data
+  // and the sort order, so turning a page or changing the page size re-slices
+  // the sorted array and never re-sorts it.
+  const sortedData = useMemo(() => {
+    return [...data].sort((a, b) => {
       let aVal: number | string;
       let bVal: number | string;
 
@@ -128,12 +129,12 @@ export function DataTable({ data }: DataTableProps) {
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
+  }, [data, sortField, sortDirection]);
 
-    // Paginate
+  const processedData = useMemo(() => {
     const startIndex = (currentPage - 1) * rowsPerPage;
-    const endIndex = startIndex + rowsPerPage;
-    return sorted.slice(startIndex, endIndex);
-  }, [data, sortField, sortDirection, currentPage, rowsPerPage]);
+    return sortedData.slice(startIndex, startIndex + rowsPerPage);
+  }, [sortedData, currentPage, rowsPerPage]);
 
   // Calculate pagination
   const totalPages = Math.ceil(data.length / rowsPerPage);
