@@ -1,6 +1,6 @@
 import type { NoiseReading } from '@/types/NoiseReading';
-import type { UserInfo } from '@/services/userService';
 import { format } from 'date-fns';
+import { authorLabel } from '@/lib/authorLabel';
 import { categoryLabel, confidenceOf, confidencePercent } from '@/lib/categories';
 import { getCoordinates, getReadingDate } from '@/lib/readings';
 import { noiseBand } from '@/lib/noiseBands';
@@ -48,7 +48,7 @@ function quoteCell(text: string): string {
  * A pure function so it can be unit-tested; exportToCSV adds the BOM and
  * downloads it.
  */
-export function buildCsv(data: NoiseReading[], userMap?: Map<string, UserInfo>): string {
+export function buildCsv(data: NoiseReading[]): string {
   // CSV Header
   const headers = [
     'Timestamp',
@@ -59,7 +59,7 @@ export function buildCsv(data: NoiseReading[], userMap?: Map<string, UserInfo>):
     'Category',
     'Type',
     'Confidence (%)',
-    'User Email'
+    'Contributor'
   ];
 
   // CSV Rows: every cell goes through csvCell / csvFixed
@@ -76,7 +76,7 @@ export function buildCsv(data: NoiseReading[], userMap?: Map<string, UserInfo>):
       csvCell(categoryLabel(reading)),
       csvCell(reading.soundType || 'Unknown'),
       csvFixed(confidencePercent(reading), 2),
-      csvCell(userMap?.get(reading.userId)?.email || reading.userId || 'Unknown')
+      csvCell(authorLabel(reading.userEmail))
     ].join(',');
   });
 
@@ -86,7 +86,7 @@ export function buildCsv(data: NoiseReading[], userMap?: Map<string, UserInfo>):
 /**
  * Export noise readings to CSV format (Excel-compatible)
  */
-export function exportToCSV(data: NoiseReading[], userMap?: Map<string, UserInfo>, filename: string = 'noise_readings') {
+export function exportToCSV(data: NoiseReading[], filename: string = 'noise_readings') {
   if (!data || data.length === 0) {
     console.warn('[exportToCSV] No data to export');
     return;
@@ -94,7 +94,7 @@ export function exportToCSV(data: NoiseReading[], userMap?: Map<string, UserInfo
 
   // Add BOM for Excel UTF-8 compatibility
   const BOM = '\uFEFF';
-  const csvWithBOM = BOM + buildCsv(data, userMap);
+  const csvWithBOM = BOM + buildCsv(data);
 
   // Download file
   downloadFile(csvWithBOM, `${filename}_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`, 'text/csv;charset=utf-8;');
@@ -126,6 +126,7 @@ export function buildJsonExport(data: NoiseReading[], exportedAt: Date) {
         soundType: reading.soundType || 'Unknown',
         confidence: confidenceOf(reading)
       },
+      contributor: authorLabel(reading.userEmail),
       userId: reading.userId || 'Unknown'
     }))
   };

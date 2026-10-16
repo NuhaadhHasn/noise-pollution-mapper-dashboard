@@ -11,7 +11,7 @@ const HEADERS = [
   'Category',
   'Type',
   'Confidence (%)',
-  'User Email',
+  'Contributor',
 ];
 
 // Built from local-time parts: the export formats in local time, so the
@@ -163,7 +163,7 @@ describe('buildCsv', () => {
       'Traffic',
       'Pollution',
       '50.00',
-      'uid1',
+      'ab***@example.com',
     ]);
   });
 
@@ -218,6 +218,38 @@ describe('buildCsv', () => {
     const rows = parseCsv(buildCsv([reading({ latitude: -33.8688, longitude: -151.2093 })]));
     expect(rows[1][2]).toBe('-33.8688');
     expect(rows[1][3]).toBe('-151.2093');
+  });
+});
+
+describe('contributor label', () => {
+  it('writes the masked label in the last CSV column', () => {
+    const rows = parseCsv(buildCsv([reading()]));
+    expect(rows[1][8]).toBe('ab***@example.com');
+  });
+
+  it('re-masks a raw address that reached the cache (priv-6)', () => {
+    const csv = buildCsv([reading({ userEmail: 'lochana@example.com' })]);
+    expect(parseCsv(csv)[1][8]).toBe('lo***@example.com');
+    expect(csv).not.toContain('lochana');
+  });
+
+  it('writes Anonymous when the reading has no label', () => {
+    const rows = parseCsv(buildCsv([reading({ userEmail: undefined })]));
+    expect(rows[1][8]).toBe('Anonymous');
+  });
+
+  it('writes Deleted User, never the rewritten uid', () => {
+    const rows = parseCsv(
+      buildCsv([reading({ userId: 'deleted_user_abcd1234', userEmail: 'Deleted User' })]),
+    );
+    expect(rows[1][8]).toBe('Deleted User');
+  });
+
+  it('adds the contributor to the JSON export and keeps userId', () => {
+    const json = buildJsonExport([reading({ userEmail: 'lochana@example.com' })], new Date());
+    expect(json.readings[0].contributor).toBe('lo***@example.com');
+    expect(json.readings[0].userId).toBe('uid1');
+    expect(JSON.stringify(json)).not.toContain('lochana');
   });
 });
 

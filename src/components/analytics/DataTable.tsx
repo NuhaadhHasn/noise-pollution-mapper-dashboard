@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import type { NoiseReading } from '@/types/NoiseReading';
-import type { UserInfo } from '@/services/userService';
 import {
   Table,
   TableBody,
@@ -12,13 +11,13 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { authorLabel } from '@/lib/authorLabel';
 import { categoryLabel, confidenceLabel, confidenceOf } from '@/lib/categories';
 import { getReadingDate } from '@/lib/readings';
 import { ChevronUp, ChevronDown, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 interface DataTableProps {
   data: NoiseReading[];
-  userMap?: Map<string, UserInfo>;
 }
 
 type SortField = 'timestamp' | 'locationName' | 'decibelLevel' | 'soundCategory' | 'soundType' | 'confidence';
@@ -39,7 +38,7 @@ function SortIcon({ field, sortField, sortDirection }: SortIconProps) {
   );
 }
 
-export function DataTable({ data, userMap }: DataTableProps) {
+export function DataTable({ data }: DataTableProps) {
   const { isDarkMode, getCardColor } = useTheme();
 
   // Pagination state
@@ -178,7 +177,7 @@ export function DataTable({ data, userMap }: DataTableProps) {
               >
                 Confidence <SortIcon field="confidence" sortField={sortField} sortDirection={sortDirection} />
               </TableHead>
-              <TableHead>User Email</TableHead>
+              <TableHead>Contributor</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -255,7 +254,7 @@ export function DataTable({ data, userMap }: DataTableProps) {
                     )}
                   </TableCell>
                   <TableCell className={cn(isDarkMode ? 'text-gray-300' : 'text-gray-700')}>
-                    {userMap?.get(reading.userId)?.email || reading.userId || 'Unknown'}
+                    {authorLabel(reading.userEmail)}
                   </TableCell>
                 </TableRow>
               ))

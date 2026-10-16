@@ -3,7 +3,6 @@ import { cn } from '@/lib/utils';
 import { MapPin, ExternalLink, Download, FileJson, Printer, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { useEffect, useState } from 'react';
 import { StatsCards } from '@/components/analytics/StatsCards';
 import { NoiseTrendChart } from '@/components/analytics/NoiseTrendChart';
 import { CategoryChart } from '@/components/analytics/CategoryChart';
@@ -11,25 +10,16 @@ import { SoundTypeChart } from '@/components/analytics/SoundTypeChart';
 import { DataTable } from '@/components/analytics/DataTable';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 import { exportToCSV, exportToJSON } from '@/utils/exportHelpers';
-import { fetchAllUsers, type UserInfo } from '@/services/userService';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 
 export default function AnalyticsPage() {
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
-  const [userMap, setUserMap] = useState<Map<string, UserInfo>>(new Map());
 
   // The shared, IndexedDB-cached readings (ReadingsProvider). `loading` covers
   // the first cache read or first download; `error` is the last failed sync.
   const { readings, loading, syncing, error, refresh } = useSyncedReadings();
   const markerCount = readings.length;
-
-  // Fetch users for email lookup
-  useEffect(() => {
-    fetchAllUsers().then((map) => {
-      setUserMap(map);
-    });
-  }, []);
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
@@ -153,7 +143,7 @@ export default function AnalyticsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => exportToCSV(readings, userMap, 'noise_readings')}
+                onClick={() => exportToCSV(readings, 'noise_readings')}
                 disabled={readings.length === 0}
                 className="text-xs sm:text-sm flex-1 sm:flex-none min-w-[120px]"
               >
@@ -185,7 +175,7 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Data Table (a skeleton while the readings load, never a false "No data") */}
-          {loading ? <ChartSkeleton /> : <DataTable data={readings} userMap={userMap} />}
+          {loading ? <ChartSkeleton /> : <DataTable data={readings} />}
         </div>
       </div>
     </div>
