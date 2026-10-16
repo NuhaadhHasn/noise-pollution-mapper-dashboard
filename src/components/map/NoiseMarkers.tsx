@@ -1,12 +1,11 @@
 import { Marker, Popup, useMap } from 'react-leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { Icon } from 'leaflet';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import type { NoiseReading } from '@/types/NoiseReading';
 import { format } from 'date-fns';
 import { getCoordinates, getReadingDate } from '@/lib/readings';
-import * as localDb from '@/utils/db';
-import * as syncManager from '@/utils/syncManager';
+import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 
 // Custom marker icon factory - Pin-shaped marker
 function createMarkerIcon(color: string): Icon {
@@ -58,61 +57,19 @@ interface NoiseMarkersProps {
  * - Loading and empty states
  */
 export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMarkersProps) {
-  const [readings, setReadings] = useState<NoiseReading[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // One shared cache and one sync for the whole app (perf-2): the
+  // ReadingsProvider owns loading and syncing. Cluster 09.1 replaces this read
+  // with an already-filtered `readings` prop.
+  const { readings, loading: isLoading } = useSyncedReadings();
   const map = useMap();
 
+  // Hand the full cached set to the parent (MapPage's heatmap) whenever the
+  // provider's readings change, including after a Sync. 09.1 deletes this.
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadData() {
-      try {
-        // Step 1: Load from IndexedDB cache (instant, 0 Firebase reads)
-        const cachedReadings = await localDb.getAllReadings();
-        
-        if (isMounted) {
-          setReadings(cachedReadings);
-          setIsLoading(false);
-          
-          if (onMarkersLoaded) {
-            onMarkersLoaded(cachedReadings.length);
-          }
-          
-          if (onDataChange && cachedReadings.length > 0) {
-            onDataChange(cachedReadings);
-          }
-        }
-
-        // Step 2: Background sync - fetch only NEW readings since last sync
-        const syncResult = await syncManager.syncNewReadings();
-        
-        if (isMounted && syncResult.newCount > 0) {
-          // Reload all readings from IndexedDB (includes new ones)
-          const updatedReadings = await localDb.getAllReadings();
-          setReadings(updatedReadings);
-          
-          if (onMarkersLoaded) {
-            onMarkersLoaded(updatedReadings.length);
-          }
-          
-          if (onDataChange) {
-            onDataChange(updatedReadings);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading readings:', error);
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
+    if (onDataChange) {
+      onDataChange(readings);
     }
-
-    loadData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [onMarkersLoaded, onDataChange]);
+  }, [readings, onDataChange]);
 
   // Apply filters and validate data
   const filteredReadings = readings.filter(reading => {
