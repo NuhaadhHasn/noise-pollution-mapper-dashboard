@@ -14,7 +14,7 @@ concurrency:
 jobs:
   verify:
     name: Lint, type-check, test, build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Check out
@@ -43,7 +43,7 @@ jobs:
 
   rules:
     name: Firestore rules (emulator)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # Emulator only, under the demo-noise-rules project id: no credentials,
     # no secrets, nothing reaches a real Firebase project.
