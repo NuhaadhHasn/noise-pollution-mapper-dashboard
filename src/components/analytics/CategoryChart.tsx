@@ -34,11 +34,13 @@ export function CategoryChart() {
       // D2: readings with no soundClass are not charted (the app's own analytics
       // skips them too, analytics_screen.dart:232-234). The caption below counts them.
       if (category === UNCLASSIFIED) return;
+      // bug-10: a missing or non-finite dB is left out, never counted as 0
+      if (!Number.isFinite(reading.decibelLevel)) return;
       if (!groups.has(category)) {
         groups.set(category, { totalDb: 0, count: 0 });
       }
       const group = groups.get(category)!;
-      group.totalDb += reading.decibelLevel || 0;
+      group.totalDb += reading.decibelLevel;
       group.count += 1;
     });
 

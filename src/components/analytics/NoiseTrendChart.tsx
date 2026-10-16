@@ -5,7 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
-import { describeTrendChart } from '@/lib/chartSummary';
+import { describeTrendChart, summarizeLevels } from '@/lib/chartSummary';
 import { bucketOf, weekLabel, type TimeGranularity } from '@/lib/trendBuckets';
 import { ChartSkeleton } from '@/components/analytics/ChartSkeleton';
 import { getReadingDate } from '@/lib/readings';
@@ -48,12 +48,19 @@ export function NoiseTrendChart() {
     // Convert to array and calculate stats
     const result: TrendDataPoint[] = Array.from(groups.entries())
       .sort(([, a], [, b]) => a.start - b.start)
-      .map(([timestamp, { dbLevels }]) => ({
-        timestamp,
-        avgDb: Math.round((dbLevels.reduce((sum, db) => sum + db, 0) / dbLevels.length) * 10) / 10,
-        maxDb: Math.round(Math.max(...dbLevels) * 10) / 10,
-        minDb: Math.round(Math.min(...dbLevels) * 10) / 10,
-      }));
+      .flatMap(([timestamp, { dbLevels }]) => {
+        // bug-10: finite values only, min and max without spreading an array
+        const summary = summarizeLevels(dbLevels);
+        if (!summary) return [];
+        return [
+          {
+            timestamp,
+            avgDb: Math.round(summary.average * 10) / 10,
+            maxDb: Math.round(summary.max * 10) / 10,
+            minDb: Math.round(summary.min * 10) / 10,
+          },
+        ];
+      });
 
     return result;
   }, [readings, granularity]);

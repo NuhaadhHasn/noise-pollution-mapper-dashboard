@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { Database, Volume2, TrendingUp, Users } from 'lucide-react';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 import { DB_CAVEAT } from '@/lib/noiseBands';
+import { computeReadingStats } from '@/lib/readingStats';
 import { StatsCardsSkeleton } from '@/components/analytics/StatsCardsSkeleton';
 
 export function StatsCards() {
@@ -33,28 +34,9 @@ export function StatsCards() {
     );
   }
 
-  // Calculate statistics from synced readings
-  const totalReadings = readings.length;
-  const decibelLevels = readings.map((r) => r.decibelLevel).filter((db) => db !== undefined);
-
-  const avgNoiseLevel = decibelLevels.length > 0
-    ? decibelLevels.reduce((sum, db) => sum + db, 0) / decibelLevels.length
-    : 0;
-
-  const maxNoiseLevel = decibelLevels.length > 0
-    ? Math.max(...decibelLevels)
-    : 0;
-
-  // Count unique contributors (userIds)
-  const uniqueUsers = new Set(readings.map((r) => r.userId).filter((id) => id !== undefined));
-  const activeContributors = uniqueUsers.size;
-
-  const stats = {
-    totalReadings,
-    avgNoiseLevel: Math.round(avgNoiseLevel * 10) / 10,
-    maxNoiseLevel: Math.round(maxNoiseLevel * 10) / 10,
-    activeContributors,
-  };
+  // bug-10: missing or non-finite dB is left out, min/max never spread an array
+  const stats = computeReadingStats(readings);
+  const dbOrDash = (value: number | null) => (value === null ? '—' : value);
 
   return (
     <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
@@ -81,14 +63,14 @@ export function StatsCards() {
         style={{ backgroundColor: getCardColor() }}
       >
         <div className="flex items-center justify-between mb-2">
-          <h3 className={cn('text-xs sm:text-sm font-medium', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>Avg Noise Level</h3>
+          <h3 className={cn('text-xs sm:text-sm font-medium', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>Average (arithmetic)</h3>
           <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
         </div>
         <p className={cn(
           'text-2xl sm:text-3xl font-bold transition-colors',
           isDarkMode ? 'text-white' : 'text-gray-900'
         )}>
-          {stats.avgNoiseLevel} <span className={cn('text-sm font-normal', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>dB</span>
+          {dbOrDash(stats.averageDb)} <span className={cn('text-sm font-normal', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>dB</span>
         </p>
       </div>
 
@@ -105,7 +87,7 @@ export function StatsCards() {
           'text-2xl sm:text-3xl font-bold transition-colors',
           isDarkMode ? 'text-white' : 'text-gray-900'
         )}>
-          {stats.maxNoiseLevel} <span className={cn('text-sm font-normal', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>dB</span>
+          {dbOrDash(stats.peakDb)} <span className={cn('text-sm font-normal', isDarkMode ? 'text-gray-300' : 'text-gray-600')}>dB</span>
         </p>
       </div>
 
@@ -122,7 +104,7 @@ export function StatsCards() {
           'text-2xl sm:text-3xl font-bold transition-colors',
           isDarkMode ? 'text-white' : 'text-gray-900'
         )}>
-          {stats.activeContributors.toLocaleString()}
+          {stats.contributors.toLocaleString()}
         </p>
       </div>
 
