@@ -288,3 +288,49 @@ describe('periodic full replace (priv-1, bug-5)', () => {
     expect(Array.from(fakeDb.rows.keys())).toEqual(['fresh']);
   });
 });
+
+describe('cache ownership and clearing (priv-4)', () => {
+  it('claimCacheFor keeps the cache for the account that wrote it', async () => {
+    fakeDb.meta.set('cacheOwnerUid', 'user-a');
+    fakeDb.rows.set('r1', { id: 'r1' });
+
+    await syncManager.claimCacheFor('user-a');
+
+    expect(fakeDb.rows.size).toBe(1);
+    expect(localDb.clearAllReadings).not.toHaveBeenCalled();
+  });
+
+  it('claimCacheFor purges a cache written for another or an unknown account', async () => {
+    seedSyncedCache(NOW - 60 * MINUTE);
+    fakeDb.meta.set('cacheOwnerUid', 'user-a');
+    fakeDb.rows.set('r1', { id: 'r1' });
+
+    await syncManager.claimCacheFor('user-b');
+
+    expect(fakeDb.rows.size).toBe(0);
+    expect(fakeDb.meta.get('maxTimestampMs')).toBeNull();
+    expect(fakeDb.meta.get('lastFullSyncAt')).toBeNull();
+    expect(fakeDb.meta.get('cacheOwnerUid')).toBe('user-b');
+
+    fakeDb.meta.delete('cacheOwnerUid');
+    fakeDb.rows.set('r2', { id: 'r2' });
+    await syncManager.claimCacheFor('user-b');
+    expect(fakeDb.rows.size).toBe(0);
+    expect(fakeDb.meta.get('cacheOwnerUid')).toBe('user-b');
+  });
+
+  it('a sync that was running when the cache was cleared writes nothing back', async () => {
+    const pending = deferred<ReturnType<typeof fakeSnapshot>>();
+    vi.mocked(getDocs).mockReturnValueOnce(pending.promise as never);
+
+    const sync = syncManager.syncNewReadings();
+    await vi.waitFor(() => expect(getDocs).toHaveBeenCalledTimes(1));
+    await syncManager.clearSyncData();
+    pending.resolve(fakeSnapshot([fakeDoc('late', NOW - MINUTE)]));
+
+    await expect(sync).rejects.toThrow('cancelled');
+    expect(fakeDb.rows.size).toBe(0);
+    expect(fakeDb.meta.get('maxTimestampMs')).toBeNull();
+    expect(fakeDb.meta.get('lastFullSyncAt')).toBeNull();
+  });
+});

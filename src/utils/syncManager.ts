@@ -60,8 +60,10 @@ const WATERMARK_KEY = 'maxTimestampMs';
 const LAST_SYNC_AT_KEY = 'lastSyncAt';
 /** sync_metadata key: wall-clock time of the last full replace (epoch ms). Missing means one is due. */
 const LAST_FULL_SYNC_AT_KEY = 'lastFullSyncAt';
+/** sync_metadata key: uid of the account the cache was written for (priv-4). */
+const CACHE_OWNER_UID_KEY = 'cacheOwnerUid';
 /** Every sync_metadata key this module writes; clearSyncData() resets them all. */
-const SYNC_METADATA_KEYS = [WATERMARK_KEY, LAST_SYNC_AT_KEY, LAST_FULL_SYNC_AT_KEY];
+const SYNC_METADATA_KEYS = [WATERMARK_KEY, LAST_SYNC_AT_KEY, LAST_FULL_SYNC_AT_KEY, CACHE_OWNER_UID_KEY];
 
 export interface SyncResult {
   /** 'full': the whole collection was fetched. 'delta': only `timestamp >` (watermark - OVERLAP_MS). */
@@ -167,6 +169,26 @@ export async function fetchReadings(q: Query): Promise<NoiseReading[]> {
 // The sync every caller currently shares, if one is running.
 let inflight: Promise<SyncResult> | null = null;
 
+// Bumped whenever the cache is wiped. A sync that started before the wipe
+// drops its result instead of writing it back into the emptied cache (priv-4).
+let cacheEpoch = 0;
+
+function assertCacheEpoch(startedEpoch: number): void {
+  if (startedEpoch !== cacheEpoch) {
+    throw new Error('Sync cancelled: the readings cache was cleared');
+  }
+}
+
+// clearSyncData() and claimCacheFor() run one at a time, so a purge and a
+// claim can never interleave their writes.
+let maintenanceQueue: Promise<unknown> = Promise.resolve();
+
+function runExclusively<T>(op: () => Promise<T>): Promise<T> {
+  const run = maintenanceQueue.then(op, op);
+  maintenanceQueue = run.catch(() => undefined);
+  return run;
+}
+
 /** Start `task` as THE shared sync: callers that arrive while it runs get the same promise. */
 function share(task: () => Promise<SyncResult>): Promise<SyncResult> {
   const run: Promise<SyncResult> = task().finally(() => {
@@ -179,6 +201,7 @@ function share(task: () => Promise<SyncResult>): Promise<SyncResult> {
 }
 
 async function performSync(forceFull: boolean): Promise<SyncResult> {
+  const startedEpoch = cacheEpoch;
   try {
     const watermark = await getWatermark();
     const lastFullSyncAt = await readNumber(LAST_FULL_SYNC_AT_KEY);
@@ -194,9 +217,11 @@ async function performSync(forceFull: boolean): Promise<SyncResult> {
       // succeeded, in one IndexedDB transaction (bug-5): a failed fetch leaves
       // the old cache and every cursor untouched.
       readings = await fetchReadings(fullQuery());
+      assertCacheEpoch(startedEpoch);
       await localDb.replaceAllReadings(readings);
     } else {
       readings = await fetchReadings(deltaQuery(deltaFrom));
+      assertCacheEpoch(startedEpoch);
       if (readings.length > 0) {
         await localDb.setManyReadings(readings);
       }
@@ -204,6 +229,7 @@ async function performSync(forceFull: boolean): Promise<SyncResult> {
 
     // Cursors are written only after the rows are stored: if anything above
     // failed, the old watermark stays and the next sync re-reads.
+    assertCacheEpoch(startedEpoch);
     const finishedAt = Date.now();
     const next = nextWatermark(readings, deltaFrom, finishedAt);
     if (next !== null) {
@@ -295,12 +321,39 @@ export function formatTimeAgo(date: Date | null, nowMs = Date.now()): string {
   return date.toLocaleDateString();
 }
 
-/**
- * Empty the readings cache and reset every sync cursor.
- */
-export async function clearSyncData(): Promise<void> {
+/** Cancel any running sync, then empty the cache and every cursor (including the owner). */
+async function wipeCache(): Promise<void> {
+  cacheEpoch += 1;
+  inflight = null;
   await localDb.clearAllReadings();
   for (const key of SYNC_METADATA_KEYS) {
     await localDb.setSyncMetadata(key, null);
   }
+}
+
+/**
+ * Empty the readings cache and reset every sync cursor (priv-4: sign-out and
+ * account switch). A sync already running is cancelled at call time and
+ * writes nothing.
+ */
+export function clearSyncData(): Promise<void> {
+  cacheEpoch += 1;
+  inflight = null;
+  return runExclusively(wipeCache);
+}
+
+/**
+ * Make the cache belong to `uid` before anything reads it. A cache written for
+ * another account, or for an unknown one (written before this check existed),
+ * is purged first (priv-4).
+ */
+export function claimCacheFor(uid: string): Promise<void> {
+  return runExclusively(async () => {
+    const owner = await localDb.getSyncMetadata(CACHE_OWNER_UID_KEY);
+    if (owner === uid) {
+      return;
+    }
+    await wipeCache();
+    await localDb.setSyncMetadata(CACHE_OWNER_UID_KEY, uid);
+  });
 }

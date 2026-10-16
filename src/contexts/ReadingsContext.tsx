@@ -85,11 +85,14 @@ interface ReadingsProviderProps {
 }
 
 export function ReadingsProvider({ children }: ReadingsProviderProps) {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
+  // The signed-in account, whether or not it may download readings. The cache
+  // purge (priv-4) follows this identity, never the download gate below.
+  const authUid = user ? user.uid : null;
   // The single gate for downloading readings. Cluster 08.1 (D1-A) changes
   // this one expression to `!!user && role === 'admin'`.
   const enabled = !!user;
-  const uid = enabled && user ? user.uid : null;
+  const uid = enabled ? authUid : null;
 
   const [session, setSession] = useState<SessionState>(() => emptySession(null));
   // Bumped when the account changes or the provider unmounts: async work
@@ -158,6 +161,24 @@ export function ReadingsProvider({ children }: ReadingsProviderProps) {
     return { count: result.totalReadings };
   }, [runSync]);
 
+  // priv-4: when the signed-in account ends (sign-out, expiry, a sign-out in
+  // another tab) or switches, purge the cache so the next person on this
+  // browser cannot read the previous account's readings. It waits until
+  // Firebase has restored the session, so a page reload never purges.
+  const sessionUidRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    const previous = sessionUidRef.current;
+    sessionUidRef.current = authUid;
+    if (authUid === null || (previous !== null && previous !== authUid)) {
+      void syncManager.clearSyncData().catch((err) => {
+        console.error('[Readings] Could not clear the readings cache:', err);
+      });
+    }
+  }, [authUid, authLoading]);
+
   // Whenever an account starts: read the cache, then run one background sync.
   useEffect(() => {
     uidRef.current = uid;
@@ -167,6 +188,8 @@ export function ReadingsProvider({ children }: ReadingsProviderProps) {
     const generation = generationRef.current;
     void (async () => {
       try {
+        // 0. A cache written for another account is purged before anything reads it.
+        await syncManager.claimCacheFor(uid);
         // 1. The cache: instant, 0 Firestore reads.
         const [cached, status] = await Promise.all([
           localDb.getAllReadings(),
