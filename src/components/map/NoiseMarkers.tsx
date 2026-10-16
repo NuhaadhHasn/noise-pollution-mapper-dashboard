@@ -1,12 +1,10 @@
 import { Marker, Popup, useMap } from 'react-leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { Icon } from 'leaflet';
-import { useEffect } from 'react';
 import type { NoiseReading } from '@/types/NoiseReading';
-import { categoryLabel, categoryOf, confidenceLabel } from '@/lib/categories';
+import { categoryLabel, confidenceLabel } from '@/lib/categories';
 import { format } from 'date-fns';
 import { getCoordinates, getReadingDate } from '@/lib/readings';
-import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 
 // Custom marker icon factory - Pin-shaped marker
 function createMarkerIcon(color: string): Icon {
@@ -37,108 +35,28 @@ function getMarkerColor(decibelLevel: number): string {
 }
 
 interface NoiseMarkersProps {
-  filters?: {
-    dateRange?: { start: Date; end: Date };
-    categories?: string[];
-    dbRange?: { min: number; max: number };
-    userId?: string; // Filter by specific user (Phase 1)
-    showAllUsers?: boolean; // Show all users' readings (Phase 2)
-  };
-  onMarkersLoaded?: (count: number) => void;
-  onDataChange?: (data: NoiseReading[]) => void;
+  /**
+   * The readings to draw, already filtered by the caller (src/lib/mapFilters.ts).
+   * This component draws exactly what it is given, so the markers, the heatmap
+   * and the marker badge always show the same set (bug-2, bug-9).
+   */
+  readings: NoiseReading[];
 }
 
 /**
- * NoiseMarkers - Displays noise readings as markers on the map
+ * NoiseMarkers - Displays already-filtered noise readings as markers on the map
  *
- * Features:
- * - Real-time Firestore sync
+ * Purely presentational: it loads nothing, filters nothing, logs nothing and
+ * reports nothing to its parent.
  * - Color-coded by dB level
- * - Filtering support
- * - Loading and empty states
+ * - A popup per marker
+ * - An empty list shows the empty pin until Step 3 moves that message into an overlay
  */
-export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMarkersProps) {
-  // One shared cache and one sync for the whole app (perf-2): the
-  // ReadingsProvider owns loading and syncing. Cluster 09.1 replaces this read
-  // with an already-filtered `readings` prop.
-  const { readings, loading: isLoading } = useSyncedReadings();
+export function NoiseMarkers({ readings }: NoiseMarkersProps) {
   const map = useMap();
 
-  // Hand the full cached set to the parent (MapPage's heatmap) whenever the
-  // provider's readings change, including after a Sync. 09.1 deletes this.
-  useEffect(() => {
-    if (onDataChange) {
-      onDataChange(readings);
-    }
-  }, [readings, onDataChange]);
-
-  // Apply filters and validate data
-  const filteredReadings = readings.filter(reading => {
-    // Validate location: flat, finite, in-range latitude/longitude (shared
-    // helper). Never log the reading here: it carries GPS and the author
-    // label, and this runs on every render (priv-5, convention 2.13).
-    if (!getCoordinates(reading)) {
-      return false;
-    }
-
-    // Validate decibel level
-    if (typeof reading.decibelLevel !== 'number') {
-      return false;
-    }
-    
-    // Apply dB filter
-    if (filters?.dbRange) {
-      if (reading.decibelLevel < filters.dbRange.min ||
-          reading.decibelLevel > filters.dbRange.max) {
-        return false;
-      }
-    }
-    
-    // Apply category filter (canonical category: manual 'Speech-*' reports match 'Speech')
-    if (filters?.categories && filters.categories.length > 0) {
-      const category = categoryOf(reading);
-      if (!filters.categories.includes(category)) {
-        return false;
-      }
-    }
-    
-    // Apply date filter. The server `timestamp` decides; the client-clock
-    // `createdAt` is used only when `timestamp` is missing (bug-8).
-    if (filters?.dateRange) {
-      const readingDate = getReadingDate(reading);
-      if (!readingDate || readingDate < filters.dateRange.start ||
-          readingDate > filters.dateRange.end) {
-        return false;
-      }
-    }
-
-    // Apply user filter (Phase 1: User-Based Restrictions)
-    if (filters?.userId && !filters?.showAllUsers) {
-      // Filter by specific user's readings
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const read = reading as any;
-      if (read.userId !== filters.userId) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-
-  // Notify parent of marker count
-  useEffect(() => {
-    if (onMarkersLoaded) {
-      onMarkersLoaded(filteredReadings.length);
-    }
-  }, [filteredReadings.length, onMarkersLoaded]);
-
-  // Show loading state
-  if (isLoading) {
-    return null; // Map will show loading indicator
-  }
-
   // Show empty state message (as a popup at map center)
-  if (filteredReadings.length === 0) {
+  if (readings.length === 0) {
     return (
       <Marker
         position={map.getCenter() as LatLngExpression}
@@ -158,7 +76,7 @@ export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMa
 
   return (
     <>
-      {filteredReadings.map((reading) => {
+      {readings.map((reading) => {
         // Coordinates and date through the shared helpers (bug-1)
         const coords = getCoordinates(reading);
         if (!coords) {

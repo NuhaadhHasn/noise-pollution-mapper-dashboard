@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapComponent } from '@/components/map/MapContainer';
 import { NoiseMarkers } from '@/components/map/NoiseMarkers';
@@ -13,7 +13,7 @@ import { MapPin, Search, Crosshair, Filter, ArrowLeft, Layers, RefreshCw } from 
 import { useTheme } from '@/contexts/ThemeContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
-import type { NoiseReading } from '@/types/NoiseReading';
+import { filterReadings } from '@/lib/mapFilters';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 import {
   Dialog,
@@ -29,16 +29,23 @@ export default function MapPage() {
   const { user } = useAuth(); // Get current user
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [markerCount, setMarkerCount] = useState(0);
   const [showHeatmap, setShowHeatmap] = useState(false);
-  const [readingsData, setReadingsData] = useState<NoiseReading[]>([]);
   const [showAllUsers, setShowAllUsers] = useState(false); // Phase 1: User filter
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date } | null>(null); // Phase 3: Date filter (null = all time)
   const [isRefreshing, setIsRefreshing] = useState(false); // Force refresh state
   const [confirmFullSyncOpen, setConfirmFullSyncOpen] = useState(false);
   const [fullSyncNotice, setFullSyncNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const { isDarkMode, primaryColor } = useTheme();
-  const { forceFullSync } = useSyncedReadings();
+  const { readings, loading, forceFullSync } = useSyncedReadings();
+  const userId = user?.uid ?? '';
+
+  // One filtered set feeds the markers, the heatmap and the badge, so the three
+  // can never disagree (bug-2, bug-9). The deps are the provider's readings array
+  // plus primitives, so the memo recomputes only when one of them changes.
+  const filteredReadings = useMemo(
+    () => filterReadings(readings, { userId, showAllUsers, range: dateRange }),
+    [readings, userId, showAllUsers, dateRange],
+  );
 
   // "Fetch All Readings": re-download everything through the provider, which
   // swaps the cache only after the download succeeded (bug-5). The provider's
@@ -147,7 +154,7 @@ export default function MapPage() {
       }`}>
         <div className="flex items-center gap-2">
           <MapPin className="h-3.5 w-3.5" style={{ color: primaryColor }} />
-          <span className="font-semibold text-sm">{markerCount} markers</span>
+          <span className="font-semibold text-sm">{filteredReadings.length} markers</span>
         </div>
       </div>
 
@@ -184,17 +191,9 @@ export default function MapPage() {
               chunkInterval: 100,  // Faster chunks (was 200ms)
               chunkDelay: 0,  // No delay between chunks (was 50ms)
             }}>
-              <NoiseMarkers
-                filters={{
-                  userId: user?.uid || '',
-                  showAllUsers,
-                  dateRange: dateRange || undefined,
-                }}
-                onMarkersLoaded={setMarkerCount}
-                onDataChange={setReadingsData}
-              />
-              <HeatmapLayer readings={readingsData} visible={showHeatmap} />
+              {!loading && <NoiseMarkers readings={filteredReadings} />}
             </MarkerClusterGroup>
+            <HeatmapLayer readings={filteredReadings} visible={showHeatmap} />
           </MapComponent>
         </ErrorBoundary>
       </div>

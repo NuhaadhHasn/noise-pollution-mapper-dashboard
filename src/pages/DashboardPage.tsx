@@ -164,7 +164,7 @@ export default function DashboardPage() {
               }>
                 <MapComponent>
                   <MarkerClusterGroup>
-                    <NoiseMarkers />
+                    <NoiseMarkers readings={readings} />
                   </MarkerClusterGroup>
                 </MapComponent>
               </ErrorBoundary>
