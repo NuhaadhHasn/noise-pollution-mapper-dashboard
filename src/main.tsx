@@ -1,9 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { GlobalErrorPage } from './components/GlobalErrorPage'
+import { ConfigErrorPage } from './components/ConfigErrorPage'
+import { currentFirebaseEnv, findMissingFirebaseEnv } from './lib/firebaseEnv'
 
 // Stale-tab recovery (11.3). After a deploy, a tab opened on the previous build
 // asks for chunk names that no longer exist, and Vite fires vite:preloadError.
@@ -29,15 +30,45 @@ window.addEventListener('vite:preloadError', (event) => {
   window.location.reload()
 })
 
-// sec-1: the last line of defence. A render error anywhere (a page, a provider,
-// the router) shows GlobalErrorPage instead of unmounting the whole app to a
-// blank page. This boundary sits OUTSIDE ThemeProvider, AuthProvider,
-// ReadingsProvider and BrowserRouter, so its fallback uses no context and no
-// router hooks (master §4.10).
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary fallbackRender={({ error }) => <GlobalErrorPage error={error} />}>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-)
+const root = createRoot(document.getElementById('root')!)
+
+// build-3: check the Firebase config BEFORE the app is loaded. App is imported
+// dynamically on purpose: a static import would evaluate src/config/firebase.ts
+// first, and with a variable missing firebase/auth throws at import, leaving a
+// blank page before any check could run. Only NAMES are ever shown, never values.
+const missingEnv = findMissingFirebaseEnv(currentFirebaseEnv())
+
+if (missingEnv.length > 0) {
+  console.error('[config] Missing Firebase environment variables:', missingEnv.join(', '))
+  root.render(
+    <StrictMode>
+      <ConfigErrorPage missing={missingEnv} />
+    </StrictMode>,
+  )
+} else {
+  // sec-1: the last line of defence. A render error anywhere (a page, a provider,
+  // the router) shows GlobalErrorPage instead of unmounting the whole app to a
+  // blank page. This boundary sits OUTSIDE ThemeProvider, AuthProvider,
+  // ReadingsProvider and BrowserRouter, so its fallback uses no context and no
+  // router hooks (master §4.10).
+  import('./App.tsx')
+    .then(({ default: App }) => {
+      root.render(
+        <StrictMode>
+          <ErrorBoundary fallbackRender={({ error }) => <GlobalErrorPage error={error} />}>
+            <App />
+          </ErrorBoundary>
+        </StrictMode>,
+      )
+    })
+    .catch((error: unknown) => {
+      // The app chunk, or a module it evaluates at import, failed (offline, a
+      // broken deploy). vite:preloadError above handles the stale-chunk case.
+      console.error('[startup] The app failed to load:', error)
+      root.render(
+        <StrictMode>
+          <GlobalErrorPage error={error instanceof Error ? error : new Error(String(error))} />
+        </StrictMode>,
+      )
+    })
+}
