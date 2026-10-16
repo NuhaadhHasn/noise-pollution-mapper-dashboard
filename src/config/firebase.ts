@@ -5,10 +5,9 @@
  * Region: asia-south1 (Mumbai)
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 
 // Firebase configuration from environment variables
 const firebaseConfig = {
@@ -24,8 +23,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Initialize Firebase services
-export const auth: any = getAuth(app);
-export const db: any = getFirestore(app);
+export const auth: Auth = getAuth(app);
+export const db: Firestore = getFirestore(app);
 
 // Export the app for use in other modules
 export default app;
