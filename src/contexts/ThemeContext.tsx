@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { FLUTTER_THEME_COLORS } from '@/utils/themeConstants';
 import { readableTextColor } from '@/lib/contrast';
+import { safeStorage } from '@/lib/safeStorage';
 
 type Theme = 'dark' | 'light' | 'system';
 
@@ -87,12 +88,15 @@ export function ThemeProvider({
   storageKey = 'noise-mapper-theme',
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
-  );
+  // bug-11: storage can throw (private window, blocked site data), and this
+  // runs during the first render, so it goes through safeStorage.
+  const [theme, setTheme] = useState<Theme>(() => {
+    const stored = safeStorage.get(storageKey);
+    return stored === 'dark' || stored === 'light' || stored === 'system' ? stored : defaultTheme;
+  });
 
   const [primaryColor, setPrimaryColor] = useState<string>(() => {
-    return localStorage.getItem(`${storageKey}-primaryColor`) || 'Purple';
+    return safeStorage.get(`${storageKey}-primaryColor`) || 'Purple';
   });
 
   // Apply theme to document
@@ -113,7 +117,7 @@ export function ThemeProvider({
     }
 
     // Store theme preference
-    localStorage.setItem(storageKey, theme);
+    safeStorage.set(storageKey, theme);
   }, [theme, storageKey]);
 
   // Apply primary color to CSS variable
@@ -126,7 +130,7 @@ export function ThemeProvider({
       document.documentElement.style.setProperty('--primary-color', oklch);
       document.documentElement.style.setProperty('--primary-color-hex', color);
       document.documentElement.style.setProperty('--primary-foreground-hex', readableTextColor(color));
-      localStorage.setItem(`${storageKey}-primaryColor`, primaryColor);
+      safeStorage.set(`${storageKey}-primaryColor`, primaryColor);
       console.log('[ThemeContext] Applied primary color:', primaryColor, color, '→', oklch);
     }
   }, [primaryColor, storageKey]);
@@ -155,12 +159,12 @@ export function ThemeProvider({
     theme,
     primaryColor,
     setTheme: (newTheme: Theme) => {
-      localStorage.setItem(storageKey, newTheme);
+      safeStorage.set(storageKey, newTheme);
       setTheme(newTheme);
       console.log('[ThemeContext] Theme changed to:', newTheme);
     },
     setPrimaryColor: (color: string) => {
-      localStorage.setItem(`${storageKey}-primaryColor`, color);
+      safeStorage.set(`${storageKey}-primaryColor`, color);
       setPrimaryColor(color);
       console.log('[ThemeContext] Primary color changed to:', color);
     },

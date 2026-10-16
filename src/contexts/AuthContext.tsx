@@ -6,6 +6,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
+import { safeStorage } from '@/lib/safeStorage';
 
 interface AuthContextType {
   user: User | null;
@@ -117,11 +118,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // priv-4: builds before cluster 05 stored the login email under this key
     // and never read it back. Remove it so it does not outlive the session.
     // The readings cache is purged by the ReadingsProvider when `user` turns null.
-    try {
-      localStorage.removeItem('remembered_email');
-    } catch {
-      // Storage unavailable (for example blocked in privacy mode): nothing stored.
-    }
+    safeStorage.remove('remembered_email');
     try {
       await firebaseSignOut(auth);
     } catch (error) {
