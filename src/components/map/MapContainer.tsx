@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { MapContainer as LeafletMapContainer, TileLayer, useMap } from 'react-leaflet';
 import type { LatLngTuple } from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 // Sri Lanka bounds
 const SRI_LANKA_BOUNDS: LatLngTuple[] = [
