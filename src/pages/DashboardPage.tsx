@@ -4,9 +4,8 @@ import { cn } from '@/lib/utils';
 import { MapPin, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { useState, useEffect } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '@/config/firebase';
+import { useMemo } from 'react';
+import { useSyncedReadings } from '@/hooks/useSyncedReadings';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { MapComponent } from '@/components/map/MapContainer';
 import { NoiseMarkers } from '@/components/map/NoiseMarkers';
@@ -24,19 +23,17 @@ import { EmptyStateActions } from '@/components/EmptyStateActions';
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { isDarkMode, getCardColor } = useTheme();
-  const [markerCount, setMarkerCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasData, setHasData] = useState(false);
-
-  // Fetch marker count from Firebase
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'noise_readings'), (snapshot) => {
-      setMarkerCount(snapshot.size);
-      setHasData(snapshot.size > 0);
-      setIsLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+  // Everything on the Overview comes from the shared IndexedDB cache (perf-1).
+  // There is no Firestore listener here: opening this page costs no reads
+  // beyond the ReadingsProvider's single delta sync, and the skeletons wait
+  // for the cache, never for a network round-trip.
+  const { readings, loading: isLoading, error, syncing, refresh } = useSyncedReadings();
+  const hasData = readings.length > 0;
+  // One source for the badge: cached readings that have a usable position.
+  const markerCount = useMemo(
+    () => readings.filter((reading) => Number.isFinite(reading.latitude) && Number.isFinite(reading.longitude)).length,
+    [readings],
+  );
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
@@ -55,16 +52,43 @@ export default function DashboardPage() {
         </p>
       </header>
 
+      {/* The last sync failed but cached readings exist: keep showing them, and say so */}
+      {error && hasData && (
+        <div
+          role="alert"
+          className={cn(
+            'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg border text-sm',
+            isDarkMode ? 'bg-red-950/40 border-red-900 text-red-200' : 'bg-red-50 border-red-200 text-red-800'
+          )}
+        >
+          <span>Could not sync new readings. Showing the readings cached in this browser.</span>
+          <Button size="sm" variant="outline" onClick={() => void refresh()} disabled={syncing}>
+            Retry
+          </Button>
+        </div>
+      )}
+
       {/* Stats Cards with Real Data */}
       {isLoading ? (
         <StatsCardsSkeleton />
       ) : hasData ? (
         <StatsCards />
+      ) : error ? (
+        <EmptyState
+          variant="error"
+          title="Could not load readings"
+          description="The readings could not be downloaded. Check your connection and try again."
+          action={
+            <Button onClick={() => void refresh()} disabled={syncing}>
+              Retry
+            </Button>
+          }
+        />
       ) : (
         <EmptyState
           variant="no-data"
           title="No Data Available"
-          description="Start recording noise levels with the mobile app to see data here."
+          description="No readings have been uploaded from the mobile app yet."
           action={
             <EmptyStateActions.ViewAnalytics onClick={() => navigate('/analytics')} />
           }
@@ -138,7 +162,7 @@ export default function DashboardPage() {
               }>
                 <MapComponent>
                   <MarkerClusterGroup>
-                    <NoiseMarkers onMarkersLoaded={setMarkerCount} />
+                    <NoiseMarkers />
                   </MarkerClusterGroup>
                 </MapComponent>
               </ErrorBoundary>
@@ -170,9 +194,13 @@ export default function DashboardPage() {
           </>
         ) : (
           <EmptyState
-            variant="no-data"
-            title="No Analytics Data"
-            description="Analytics will appear here once you have recorded noise readings."
+            variant={error ? 'error' : 'no-data'}
+            title={error ? 'Analytics unavailable' : 'No Analytics Data'}
+            description={
+              error
+                ? 'Analytics appear once the readings have been downloaded.'
+                : 'Analytics appear here once the mobile app has uploaded readings.'
+            }
           />
         )}
       </div>
