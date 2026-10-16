@@ -55,5 +55,5 @@ Desktop.ini
 # PII: the master cache is a verbatim dump of every noise reading
 # (userEmail + precise lat/lng). It was committed and public until
 # 2026-09-09; history was rewritten to purge it. Never commit it again.
-# Regenerate it with functions/src/cache-export.ts instead.
+# scripts/export-cache.js can still write it locally; keep it out of git.
 cache/
