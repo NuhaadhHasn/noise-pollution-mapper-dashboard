@@ -9,9 +9,25 @@ interface MarkerClusterGroupProps {
   children?: React.ReactNode;
 }
 
+// Defaults for every map that clusters noise readings, so a page that passes no
+// options (the Overview mini-map) is still tuned. MapPage passes its overrides.
+const DEFAULT_OPTIONS: L.MarkerClusterGroupOptions = {
+  maxClusterRadius: 40,
+  disableClusteringAtZoom: 15,
+  spiderfyOnMaxZoom: true,
+  showCoverageOnHover: false,
+  zoomToBoundsOnClick: true,
+  animate: false,
+  animateAddingMarkers: false,
+  removeOutsideVisibleBounds: true,
+};
+
 function createCluster(props: MarkerClusterGroupProps, context: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
   const { options } = props;
-  const cluster = L.markerClusterGroup(options);
+  // chunkedLoading is forced OFF: markercluster's own chunk loop cannot be
+  // cancelled, so replacing the markers mid-load would re-add stale ones or throw
+  // on a removed group. NoiseMarkers chunks its own bulk adds and can cancel them.
+  const cluster = L.markerClusterGroup({ ...DEFAULT_OPTIONS, ...options, chunkedLoading: false });
   return {
     instance: cluster,
     context: extendContext(context, { layerContainer: cluster }),

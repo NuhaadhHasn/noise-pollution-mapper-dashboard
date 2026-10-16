@@ -191,9 +191,6 @@ export default function MapPage() {
               animate: false,
               animateAddingMarkers: false,
               removeOutsideVisibleBounds: true,
-              chunkedLoading: true,
-              chunkInterval: 100,  // Faster chunks (was 200ms)
-              chunkDelay: 0,  // No delay between chunks (was 50ms)
             }}>
               {!loading && <NoiseMarkers readings={filteredReadings} />}
             </MarkerClusterGroup>
