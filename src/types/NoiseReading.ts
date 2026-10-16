@@ -16,6 +16,7 @@ export interface NoiseReading {
   soundClass?: string;         // raw app value; absent = unclassified
   soundType?: 'Pollution' | 'Ambient';
   confidence?: number;         // absent when unclassified
-  timestamp: number | null;    // epoch ms (server clock)
+  timestamp: number | null;    // epoch ms (capture time: server clock online, device clock offline)
   createdAt?: number | null;   // epoch ms (client clock; on 17.8% of docs)
+  syncedAt?: number | null;    // epoch ms (server upload time, data-1); absent on docs from older app builds
 }

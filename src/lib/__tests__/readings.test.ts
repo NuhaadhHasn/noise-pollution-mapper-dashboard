@@ -224,6 +224,15 @@ describe('normalizeReading', () => {
     });
   });
 
+  it('carries syncedAt as epoch ms, and omits it when missing or unparseable (data-1)', () => {
+    const uploadedLater = rawDoc({ syncedAt: new FakeTimestamp(SECONDS + 3600, 0) });
+    expect(normalizeReading('r6', uploadedLater)?.syncedAt).toBe(MS + 3_600_000);
+    expect(normalizeReading('r6', structuredClone(uploadedLater))?.syncedAt).toBe(MS + 3_600_000);
+    expect(normalizeReading('r7', rawDoc())).not.toHaveProperty('syncedAt');
+    expect(normalizeReading('r8', rawDoc({ syncedAt: 'not a date' }))).not.toHaveProperty('syncedAt');
+    expect(normalizeReading('r9', rawDoc({ syncedAt: null }))).not.toHaveProperty('syncedAt');
+  });
+
   it("drops a soundType other than 'Pollution'/'Ambient' and a non-numeric confidence", () => {
     const reading = normalizeReading('r3', rawDoc({ soundType: 'Both', confidence: '0.9' }));
     expect(reading).not.toBeNull();

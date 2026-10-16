@@ -143,9 +143,11 @@ function isOptionalString(value: unknown): boolean {
  *   (null counts as absent: the app's offline path can write a null
  *   `userEmail`).
  *
- * Otherwise `timestamp` and `createdAt` become epoch ms (`timestamp` is null
- * when unparseable; `createdAt` is omitted), and only keys declared on
- * NoiseReading are copied. `soundType` survives only as 'Pollution' or
+ * Otherwise `timestamp`, `createdAt` and `syncedAt` become epoch ms
+ * (`timestamp` is null when unparseable; `createdAt` and `syncedAt` are
+ * omitted), and only keys declared on NoiseReading are copied. `syncedAt` is
+ * the server upload time current app builds stamp (data-1): the delta sync's
+ * second cursor, absent on docs from older builds. `soundType` survives only as 'Pollution' or
  * 'Ambient', `confidence` only as a finite number. `deviceInfo` and any
  * unknown key are dropped. `soundCategory` is never copied: no app version
  * writes it.
@@ -176,6 +178,10 @@ export function normalizeReading(id: string, data: Record<string, unknown>): Noi
   const createdAt = toMillis(data.createdAt);
   if (createdAt !== null) {
     reading.createdAt = createdAt;
+  }
+  const syncedAt = toMillis(data.syncedAt);
+  if (syncedAt !== null) {
+    reading.syncedAt = syncedAt;
   }
   if (typeof locationName === 'string') {
     reading.locationName = locationName;
