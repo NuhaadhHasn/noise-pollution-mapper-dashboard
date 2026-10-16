@@ -194,7 +194,9 @@ re-run.
      `firebase deploy --only firestore:rules,firestore:indexes`.
    - **NEVER `--only storage` and never a bare `firebase deploy`.** The
      project has NO Storage bucket, so the storage target fails outright.
-     `APP:firebase.json` still declares a `storage` target (§7).
+     `APP:firebase.json` still declares a `storage` target (§7). *(Historical:
+     the target and `storage.rules` were removed on 2026-10-16, build-2,
+     APP `decbe0c` and DASH `f2f8cc2`. The rule to never deploy storage stays.)*
    - Deploy only after showing the owner the full rules diff against the
      deployed ruleset, and receiving an explicit "yes". The deployed
      ruleset `ebff82af-…` equals `APP:firestore.rules` at `9b08e68`, per
@@ -455,7 +457,9 @@ Further requirements:
    (Git Bash, from DASH).
 3. Run `node scripts/check-rules-drift.mjs ../noise_pollution_mapper`. It
    compares `firestore.rules` AND `storage.rules` after stripping `\r`, and
-   exits non-zero on any difference.
+   exits non-zero on any difference. *(Historical: `storage.rules` was removed
+   in both repos on 2026-10-16, build-2, and the drift check now compares
+   `firestore.rules` only.)*
 4. Commit APP, then DASH, with the identical title.
 5. After both commits, `git ls-files -s firestore.rules` must print the
    **same blob id in both repos**. The audit-time id is `04bd418e`; it
@@ -1048,53 +1052,53 @@ The playbook is DONE when all of the following hold.
 **Low and Enhancement findings, not bundled above.** Each is one line, and
 the full evidence is in the audit docs.
 
-- **bug-10**: StatsCards counts a missing dB as 0, and
+- **DONE (`06e124f`)** **bug-10**: StatsCards counts a missing dB as 0, and
   `Math.max(...spread)` throws at about 100k rows. Use `reduce`, and
   decide between an arithmetic mean and Leq labelling.
-- **bug-11**: `ThemeContext` reads `localStorage` unguarded during the
+- **DONE (`4a9c3e1`)** **bug-11**: `ThemeContext` reads `localStorage` unguarded during the
   first render. Add a try/catch `safeStorage` helper. The 08.2 root
   boundary only softens this.
-- **bug-12**: Trend buckets and CSV timestamps use browser-local time.
+- **DONE (`ac40704`)** **bug-12**: Trend buckets and CSV timestamps use browser-local time.
   Bucket in `Asia/Colombo` explicitly, and add an ISO-UTC timestamp column
   to the exports.
-- **build-1**: The untracked `DEPLOYMENT_GUIDE.md:229-248` embeds an
+- **DONE (`9b7a33f`, the new tracked DEPLOYMENT_GUIDE.md)** **build-1**: The untracked `DEPLOYMENT_GUIDE.md:229-248` embeds an
   obsolete, weaker ruleset. Replace it with a pointer to
   `APP:firestore.rules` and the §2.3 deploy command.
-- **build-2**: `APP:firebase.json` still declares a `storage` target, and
+- **DONE (APP `decbe0c`, DASH `f2f8cc2`)** **build-2**: `APP:firebase.json` still declares a `storage` target, and
   `storage.rules:10-12` names a nonexistent `firebase.rules`. Remove the
   target and both `storage.rules` copies until a bucket exists. This is an
   APP-repo change that needs owner sign-off.
-- **build-3**: Validate the six `VITE_FIREBASE_*` env vars at startup and
+- **DONE (`9b840a8`)** **build-3**: Validate the six `VITE_FIREBASE_*` env vars at startup and
   render a readable configuration error.
-- **perf-6**: DataTable re-sorts the whole dataset on every page change.
+- **DONE (`1b741db`)** **perf-6**: DataTable re-sorts the whole dataset on every page change.
   Split it into a sort memo and a slice memo.
-- **priv-6** (APP): `APP:lib/services/sync_service.dart:308` falls back to
+- **DONE (APP `83df6e1`)** **priv-6** (APP): `APP:lib/services/sync_service.dart:308` falls back to
   the raw auth email for legacy queue entries. The fix is a one-line
   change to `authorLabel(...)`; the mobile playbook §4.2 accepted it as a
   residual. 07.2 masks it at display time in the meantime.
-- **sec-5**: `vercel.json` sets no security headers (CSP, frame-ancestors,
+- **DONE (`0e46946` headers and report-only CSP, `dad3004` rewrite, `a7a644d` CSP enforced)** **sec-5**: `vercel.json` sets no security headers (CSP, frame-ancestors,
   nosniff), and its catch-all rewrite serves `index.html` for missing
   assets. (The rewrite half moved into 11.3 on 2026-10-16. CSP, frame-ancestors
   and nosniff stay here.)
-- **ux-6**: The dead map search box, the "Current location" button, and
+- **DONE (`2e4dd35`)** **ux-6**: The dead map search box, the "Current location" button, and
   "More filters coming soon" placeholders. Wire them up or remove them.
-- **ux-8** (the remainder): Add a NotFound route; preserve the return path
+- **DONE (`19e93f4`)** **ux-8** (the remainder): Add a NotFound route; preserve the return path
   through login; redirect authenticated users away from `/login`.
-- **ux-9**: Clamp DataTable pagination (it shows "1/0" and "Showing -9 to
+- **DONE (`0ac68ed`)** **ux-9**: Clamp DataTable pagination (it shows "1/0" and "Showing -9 to
   0").
-- **ux-10**: The trend chart's max and min lines are invisible for a
+- **DONE (`1d1c6af`)** **ux-10**: The trend chart's max and min lines are invisible for a
   single bucket.
-- **ux-11**: Print outputs only the current 10-row page.
-- **ux-12**: The "Real-time" subtitle overstates how fresh the data is.
-- **ux-13**: Markers outside the Sri Lanka `maxBounds` are counted but can
+- **DONE (`c8339c4`)** **ux-11**: Print outputs only the current 10-row page.
+- **DONE (`8f76776`)** **ux-12**: The "Real-time" subtitle overstates how fresh the data is.
+- **DONE (`7d862d7`)** **ux-13**: Markers outside the Sri Lanka `maxBounds` are counted but can
   never be reached.
-- **ux-14**: The Vite default title and favicon, with no per-route title.
-- **arch-3** (the remainder): `VITE_*_THRESHOLD` env vars are never read.
+- **DONE (`cc07bc4`)** **ux-14**: The Vite default title and favicon, with no per-route title.
+- **DONE (`0aac0f8`)** **arch-3** (the remainder): `VITE_*_THRESHOLD` env vars are never read.
   Remove them or wire them to `noiseBands.ts`.
 
 **Parked engineering work:**
 
-- **App-side sync cursor (data-1, complete fix).**
+- **STILL OPEN (needs an app release)** **App-side sync cursor (data-1, complete fix).**
   - Add `syncedAt: FieldValue.serverTimestamp()` to BOTH app writers
     (`firebase_service.dart` `_saveToFirebase`, `sync_service.dart`
     `_saveToFirebase`).
@@ -1105,23 +1109,45 @@ the full evidence is in the audit docs.
   - Docs written by older app versions lack `syncedAt`, so the 24 h full
     replace must stay as the backstop.
   - This needs an app release.
-- **Firestore rules unit tests:** `@firebase/rules-unit-testing` against
+- **DONE (`b637437`, run in CI by `01c04ec`)** **Firestore rules unit tests:** `@firebase/rules-unit-testing` against
   the emulator (needs Java). Cover every row of the §4.1 matrix, plus the
   attack cases: a map-typed `soundClass`, a dB of 1e300, a 1 MB
   `locationName`, `deleted_user_<another uid prefix>`, and a reassign to an
   arbitrary uid. Run the suite in APP CI.
-- **The SDK's own persistence:** replace the hand-rolled IndexedDB cache
+- **DECIDED AGAINST (see the decision note below)** **The SDK's own persistence:** replace the hand-rolled IndexedDB cache
   with `initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) })`
   and one shared listener. It handles removed and modified docs natively,
   with no new index. Re-evaluate the read cost first.
-- **`noUnusedLocals` / `noUnusedParameters`,** and a dead-code sweep of the
+- **DONE (`71332f7`, `dac3ad1`, `7d3b12a`)** **`noUnusedLocals` / `noUnusedParameters`,** and a dead-code sweep of the
   unused `components/ui/*` files.
-- **Review `scripts/export-cache.js` and
+- **DONE (`d1857a1`, deleted along with `firebase-admin`)** **Review `scripts/export-cache.js` and
   `scripts/export-cache-to-firestore.js`.** They are Admin SDK tools that
   write a full dump. The `cache/` collection does not exist; delete them if
   unused.
-- **Billing plan check** (perf-1 needs_prod_check), if M2 did not settle
-  it.
+- **DONE (owner answered 2026-10-16: Spark plan)** **Billing plan check** (perf-1 needs_prod_check).
+
+### Decision: do not migrate to the SDK persistentLocalCache
+
+Decided 2026-10-16. The dashboard keeps its hand-rolled IndexedDB cache and delta
+sync (`src/utils/syncManager.ts`) instead of moving to
+`initializeFirestore(... persistentLocalCache(...))` with a shared listener.
+
+- **Cost.** Per the Firebase billing documentation, a snapshot listener that
+  reconnects after being offline for more than 30 minutes is charged as a new
+  query. With the SDK cache, every dashboard visit more than 30 minutes after
+  the last one would therefore re-bill the whole result set, about 3,374 reads
+  today, and more as the collection grows.
+- **Current behaviour.** The delta sync reads only documents that are new or
+  changed since the stored watermark (`timestamp >` the watermark minus an
+  overlap window), so a returning visit costs a handful of reads. The periodic
+  full replace is the only full read.
+- **Quota.** The project is on the Spark plan, whose limit is 50,000 reads per
+  day, shared with the mobile app. At about 3,374 reads per visit, roughly 15
+  visits a day would exhaust it for both clients. That is the perf-1 quota risk
+  the cache and delta sync were built to remove, and the migration would bring
+  it back.
+- **Revisit** only if the project moves to the Blaze plan and the collection
+  stays small, or if the SDK's reconnect billing rule changes.
 
 Consult `audit/00_*` (master report) before scheduling any of this. Do not
 re-audit the codebase.
