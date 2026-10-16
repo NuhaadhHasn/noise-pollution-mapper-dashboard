@@ -6,6 +6,7 @@
  */
 
 import type { NoiseReading } from '@/types/NoiseReading';
+import { toMillis } from '@/lib/readings';
 
 const DB_NAME = 'noise-pollution-db';
 const DB_VERSION = 1;
@@ -200,14 +201,8 @@ export async function getLatestTimestamp(): Promise<number> {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
         if (cursor) {
           const reading = cursor.value as NoiseReading;
-          // Handle both Timestamp objects and plain numbers
-          const timestamp = reading.timestamp?.toDate?.() || reading.timestamp;
-          const timestampNum = timestamp instanceof Date 
-            ? timestamp.getTime() 
-            : typeof timestamp === 'number' 
-              ? timestamp 
-              : 0;
-          resolve(timestampNum);
+          // Shared helper: epoch ms from any stored timestamp shape
+          resolve(toMillis(reading.timestamp) ?? 0);
         } else {
           resolve(0); // No readings in cache
         }

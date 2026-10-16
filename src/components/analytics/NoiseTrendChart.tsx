@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { useSyncedReadings } from '@/hooks/useSyncedReadings';
+import { getReadingDate } from '@/lib/readings';
 
 type TimeGranularity = 'hour' | 'day' | 'week' | 'month';
 
@@ -20,38 +21,6 @@ export function NoiseTrendChart() {
   const [granularity, setGranularity] = useState<TimeGranularity>('day');
   const { readings } = useSyncedReadings();
 
-  // Helper function to convert timestamp from Firebase or IndexedDB to Date
-  function toDate(timestamp: unknown): Date {
-    if (!timestamp) return new Date(0);
-    
-    // If it's already a Date
-    if (timestamp instanceof Date) {
-      return timestamp;
-    }
-    
-    // Cast to any for property access checks
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ts = timestamp as any;
-    
-    // If it's a Firebase Timestamp with toDate() method
-    if (typeof ts.toDate === 'function') {
-      return ts.toDate();
-    }
-    
-    // If it's a plain object with seconds (from IndexedDB)
-    if (typeof ts === 'object' && 'seconds' in ts) {
-      return new Date(ts.seconds * 1000);
-    }
-    
-    // If it's a number (milliseconds)
-    if (typeof ts === 'number') {
-      return new Date(ts);
-    }
-    
-    // Fallback
-    return new Date(0);
-  }
-
   // Group readings by time granularity
   const groupedData = useMemo(() => {
     if (readings.length === 0) return [];
@@ -59,7 +28,12 @@ export function NoiseTrendChart() {
     const groups = new Map<string, number[]>();
 
     readings.forEach((reading) => {
-      const timestamp = toDate(reading.timestamp);
+      const timestamp = getReadingDate(reading);
+      // bug-13: a reading with no usable date is left out instead of being
+      // bucketed to 1 Jan 1970
+      if (!timestamp) {
+        return;
+      }
       let key: string;
 
       switch (granularity) {

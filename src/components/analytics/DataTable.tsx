@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { getReadingDate } from '@/lib/readings';
 import { ChevronUp, ChevronDown, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 interface DataTableProps {
@@ -48,38 +49,6 @@ export function DataTable({ data, userMap }: DataTableProps) {
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  // Helper function to convert timestamp from Firebase or IndexedDB to Date
-  function toDate(timestamp: unknown): Date {
-    if (!timestamp) return new Date(0);
-    
-    // If it's already a Date
-    if (timestamp instanceof Date) {
-      return timestamp;
-    }
-    
-    // Cast to any for property access checks
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ts = timestamp as any;
-    
-    // If it's a Firebase Timestamp with toDate() method
-    if (typeof ts.toDate === 'function') {
-      return ts.toDate();
-    }
-    
-    // If it's a plain object with seconds (from IndexedDB)
-    if (typeof ts === 'object' && 'seconds' in ts) {
-      return new Date(ts.seconds * 1000);
-    }
-    
-    // If it's a number (milliseconds)
-    if (typeof ts === 'number') {
-      return new Date(ts);
-    }
-    
-    // Fallback
-    return new Date(0);
-  }
-
   // Sort and paginate data
   const processedData = useMemo(() => {
     // Sort
@@ -89,8 +58,9 @@ export function DataTable({ data, userMap }: DataTableProps) {
 
       switch (sortField) {
         case 'timestamp':
-          aVal = toDate(a.timestamp).getTime();
-          bVal = toDate(b.timestamp).getTime();
+          // A reading with no usable date sorts as 0 (last when descending)
+          aVal = getReadingDate(a)?.getTime() ?? 0;
+          bVal = getReadingDate(b)?.getTime() ?? 0;
           break;
         case 'locationName':
           aVal = a.locationName || '';
@@ -228,13 +198,13 @@ export function DataTable({ data, userMap }: DataTableProps) {
                   }}
                 >
                   <TableCell className={cn('font-medium', isDarkMode ? 'text-gray-300' : 'text-gray-700')}>
-                    {toDate(reading.timestamp).toLocaleString('en-US', {
+                    {getReadingDate(reading)?.toLocaleString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
                       hour: '2-digit',
                       minute: '2-digit'
-                    })}
+                    }) ?? '—'}
                   </TableCell>
                   <TableCell className={cn(isDarkMode ? 'text-gray-300' : 'text-gray-700')}>
                     {reading.locationName || 'Unknown'}

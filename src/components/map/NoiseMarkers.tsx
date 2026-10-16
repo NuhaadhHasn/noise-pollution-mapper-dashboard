@@ -4,6 +4,7 @@ import { Icon } from 'leaflet';
 import { useEffect, useState } from 'react';
 import type { NoiseReading } from '@/types/NoiseReading';
 import { format } from 'date-fns';
+import { getCoordinates, getReadingDate } from '@/lib/readings';
 import * as localDb from '@/utils/db';
 import * as syncManager from '@/utils/syncManager';
 
@@ -115,40 +116,15 @@ export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMa
 
   // Apply filters and validate data
   const filteredReadings = readings.filter(reading => {
-    // Validate location exists (flat structure: latitude/longitude at root level)
-    let isValidLocation = false;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const read = reading as any;
-    
-    // Check for flat structure (latitude/longitude at root level)
-    if (typeof read.latitude === 'number' && typeof read.longitude === 'number') {
-      isValidLocation = true;
-    }
-    // Check for nested structure (location.latitude/location.longitude)
-    else if (reading.location) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const loc = reading.location as any;
-      if (typeof loc.latitude === 'number' && typeof loc.longitude === 'number') {
-        isValidLocation = true;
-      }
-    }
-    // Check for GeoJSON format (lat/lng at root level)
-    else if (typeof read.lat === 'number' && typeof read.lng === 'number') {
-      isValidLocation = true;
-    }
-    // Check for GeoJSON Point (coordinates array at root level)
-    else if (Array.isArray(read.coordinates) && read.coordinates.length >= 2) {
-      isValidLocation = true;
-    }
-    
-    if (!isValidLocation) {
-      console.warn('Invalid location data for reading:', reading.id, reading);
+    // Validate location: flat, finite, in-range latitude/longitude (shared
+    // helper). Never log the reading here: it carries GPS and the author
+    // label, and this runs on every render (priv-5, convention 2.13).
+    if (!getCoordinates(reading)) {
       return false;
     }
-    
+
     // Validate decibel level
     if (typeof reading.decibelLevel !== 'number') {
-      console.warn('Invalid decibel level for reading:', reading.id);
       return false;
     }
     
@@ -169,47 +145,10 @@ export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMa
       }
     }
     
-    // Apply date filter
+    // Apply date filter. The server `timestamp` decides; the client-clock
+    // `createdAt` is used only when `timestamp` is missing (bug-8).
     if (filters?.dateRange) {
-      let readingDate: Date | undefined;
-      
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const read = reading as any;
-      
-      // Handle Firestore Timestamp object from IndexedDB (stored as { seconds, nanoseconds })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const timestampAny = reading.timestamp as any;
-      if (timestampAny?.seconds) {
-        readingDate = new Date(timestampAny.seconds * 1000);
-      }
-      // Handle Firestore Timestamp with toDate() method
-      else if (reading.timestamp?.toDate) {
-        readingDate = reading.timestamp.toDate();
-      }
-      // Handle ISO string
-      else if (typeof reading.timestamp === 'string') {
-        readingDate = new Date(reading.timestamp);
-      }
-      // Handle numeric timestamp (milliseconds)
-      else if (typeof reading.timestamp === 'number') {
-        readingDate = new Date(reading.timestamp);
-      }
-      // Handle nested timestamp (createdAt, updatedAt, etc.)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const createdAtAny = read.createdAt as any;
-      if (createdAtAny?.seconds) {
-        readingDate = new Date(createdAtAny.seconds * 1000);
-      }
-      else if (read.createdAt?.toDate) {
-        readingDate = read.createdAt.toDate();
-      }
-      else if (typeof read.createdAt === 'string') {
-        readingDate = new Date(read.createdAt);
-      }
-      else if (typeof read.createdAt === 'number') {
-        readingDate = new Date(read.createdAt);
-      }
-      
+      const readingDate = getReadingDate(reading);
       if (!readingDate || readingDate < filters.dateRange.start ||
           readingDate > filters.dateRange.end) {
         return false;
@@ -263,41 +202,13 @@ export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMa
   return (
     <>
       {filteredReadings.map((reading) => {
-        // Extract coordinates - check flat structure first
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const read = reading as any;
-        let lat: number | undefined;
-        let lng: number | undefined;
-
-        // Flat structure (latitude/longitude at root level)
-        if (typeof read?.latitude === 'number' && typeof read?.longitude === 'number') {
-          lat = read.latitude;
-          lng = read.longitude;
-        }
-        // Nested structure (location.latitude/location.longitude)
-        else if (reading.location) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const loc = reading.location as any;
-          if (typeof loc.latitude === 'number') {
-            lat = loc.latitude;
-            lng = loc.longitude;
-          }
-        }
-        // GeoJSON format (lat/lng at root level)
-        else if (typeof read?.lat === 'number' && typeof read?.lng === 'number') {
-          lat = read.lat;
-          lng = read.lng;
-        }
-        // GeoJSON Point (coordinates array at root level)
-        else if (Array.isArray(read?.coordinates)) {
-          lng = read.coordinates[0];
-          lat = read.coordinates[1];
-        }
-
-        // Skip if no valid coordinates
-        if (!lat || !lng) {
+        // Coordinates and date through the shared helpers (bug-1)
+        const coords = getCoordinates(reading);
+        if (!coords) {
           return null;
         }
+        const { lat, lng } = coords;
+        const readingDate = getReadingDate(reading);
 
         // Get category (check both soundCategory and soundClass)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -359,8 +270,8 @@ export function NoiseMarkers({ filters, onMarkersLoaded, onDataChange }: NoiseMa
 
                   {/* Timestamp */}
                   <div className="text-xs text-gray-500 mt-3 pt-2 border-t">
-                    {reading.timestamp?.toDate?.()
-                      ? format(reading.timestamp.toDate(), 'MMM d, yyyy h:mm a')
+                    {readingDate
+                      ? format(readingDate, 'MMM d, yyyy h:mm a')
                       : 'No timestamp'}
                   </div>
                 </div>

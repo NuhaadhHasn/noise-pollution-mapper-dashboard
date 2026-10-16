@@ -1,6 +1,7 @@
 import type { NoiseReading } from '@/types/NoiseReading';
 import type { UserInfo } from '@/services/userService';
 import { format } from 'date-fns';
+import { getCoordinates, getReadingDate } from '@/lib/readings';
 
 /**
  * Export noise readings to CSV format (Excel-compatible)
@@ -26,41 +27,15 @@ export function exportToCSV(data: NoiseReading[], userMap?: Map<string, UserInfo
 
   // CSV Rows
   const rows = data.map(reading => {
-    // Extract latitude and longitude from various formats
-    let lat: number | string = '';
-    let lng: number | string = '';
+    // Coordinates through the shared helper (flat, finite, in-range only)
+    const coords = getCoordinates(reading);
+    const lat: number | string = coords ? coords.lat : '';
+    const lng: number | string = coords ? coords.lng : '';
 
-    if (reading.latitude && reading.longitude) {
-      // Flat structure
-      lat = reading.latitude;
-      lng = reading.longitude;
-    } else if (reading.location) {
-      const loc = reading.location as {
-        latitude?: number;
-        longitude?: number;
-        lat?: number;
-        lng?: number;
-        coordinates?: [number, number];
-      };
-      if ('latitude' in loc && 'longitude' in loc && loc.latitude && loc.longitude) {
-        // Nested { latitude, longitude }
-        lat = loc.latitude;
-        lng = loc.longitude;
-      } else if ('lat' in loc && 'lng' in loc && loc.lat && loc.lng) {
-        // Nested { lat, lng }
-        lat = loc.lat;
-        lng = loc.lng;
-      } else if ('coordinates' in loc && loc.coordinates) {
-        // GeoJSON format [lng, lat]
-        lng = loc.coordinates[0];
-        lat = loc.coordinates[1];
-      }
-    }
-
-    // Format timestamp
-    const timestamp = reading.timestamp?.toDate 
-      ? format(reading.timestamp.toDate(), 'yyyy-MM-dd HH:mm:ss')
-      : 'Unknown';
+    // Format timestamp through the shared helper. Rows come back from
+    // IndexedDB without Timestamp methods, so the old `.toDate` check was
+    // always false and every row said 'Unknown' (bug-1).
+    const timestamp = formatExportTimestamp(reading);
 
     // Escape quotes in location name
     const locationName = (reading.locationName || '').replace(/"/g, '""');
@@ -108,12 +83,10 @@ export function exportToJSON(data: NoiseReading[], filename: string = 'noise_rea
     },
     readings: data.map(reading => ({
       id: reading.id,
-      timestamp: reading.timestamp?.toDate 
-        ? format(reading.timestamp.toDate(), 'yyyy-MM-dd HH:mm:ss')
-        : 'Unknown',
+      timestamp: formatExportTimestamp(reading),
       location: {
         name: reading.locationName || 'Unknown',
-        coordinates: extractCoordinates(reading.location, reading.latitude, reading.longitude)
+        coordinates: extractCoordinates(reading)
       },
       measurement: {
         decibelLevel: reading.decibelLevel,
@@ -134,49 +107,19 @@ export function exportToJSON(data: NoiseReading[], filename: string = 'noise_rea
 }
 
 /**
- * Helper: Extract coordinates from various formats
+ * Helper: Format a reading's date for export ('Unknown' when it has none)
  */
-function extractCoordinates(
-  location: {
-    latitude?: number;
-    longitude?: number;
-    lat?: number;
-    lng?: number;
-    coordinates?: [number, number];
-  } | null | undefined,
-  latitude?: number,
-  longitude?: number
-): { latitude: number; longitude: number } | null {
-  if (latitude && longitude) {
-    return { latitude, longitude };
-  }
+function formatExportTimestamp(reading: NoiseReading): string {
+  const date = getReadingDate(reading);
+  return date ? format(date, 'yyyy-MM-dd HH:mm:ss') : 'Unknown';
+}
 
-  if (!location) {
-    return null;
-  }
-
-  if ('latitude' in location && 'longitude' in location && location.latitude && location.longitude) {
-    return {
-      latitude: location.latitude,
-      longitude: location.longitude
-    };
-  }
-
-  if ('lat' in location && 'lng' in location && location.lat && location.lng) {
-    return {
-      latitude: location.lat,
-      longitude: location.lng
-    };
-  }
-
-  if ('coordinates' in location && location.coordinates) {
-    return {
-      latitude: location.coordinates[1],
-      longitude: location.coordinates[0]
-    };
-  }
-
-  return null;
+/**
+ * Helper: Extract coordinates through the shared getCoordinates helper
+ */
+function extractCoordinates(reading: NoiseReading): { latitude: number; longitude: number } | null {
+  const coords = getCoordinates(reading);
+  return coords ? { latitude: coords.lat, longitude: coords.lng } : null;
 }
 
 /**

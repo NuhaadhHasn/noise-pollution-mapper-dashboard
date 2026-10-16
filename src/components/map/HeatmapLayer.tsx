@@ -3,6 +3,7 @@ import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet.heat';
 import type { NoiseReading } from '@/types/NoiseReading';
+import { getCoordinates } from '@/lib/readings';
 
 interface HeatmapLayerProps {
   readings: NoiseReading[];
@@ -26,34 +27,10 @@ export function HeatmapLayer({ readings, visible = true }: HeatmapLayerProps) {
 
     // Convert readings to heat points [lat, lng, intensity]
     const heatPoints: [number, number, number][] = readings.map(reading => {
-      // Extract coordinates (support flat structure)
-      const read = reading as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-      let lat: number | undefined;
-      let lng: number | undefined;
-
-      // Flat structure (latitude/longitude at root level)
-      if (typeof read?.latitude === 'number' && typeof read?.longitude === 'number') {
-        lat = read.latitude;
-        lng = read.longitude;
-      }
-      // Nested structure (location.latitude/location.longitude)
-      else if (reading.location) {
-        const loc = reading.location as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-        if (typeof loc.latitude === 'number' && typeof loc.longitude === 'number') {
-          lat = loc.latitude;
-          lng = loc.longitude;
-        }
-      }
-      // GeoJSON format (lat/lng at root level)
-      else if (typeof read?.lat === 'number' && typeof read?.lng === 'number') {
-        lat = read.lat;
-        lng = read.lng;
-      }
-      // GeoJSON Point (coordinates array)
-      else if (Array.isArray(read?.coordinates) && read.coordinates.length >= 2) {
-        lng = read.coordinates[0];
-        lat = read.coordinates[1];
-      }
+      // Extract coordinates through the shared helper (flat, finite lat/lng)
+      const coords = getCoordinates(reading);
+      const lat = coords?.lat;
+      const lng = coords?.lng;
 
       // Normalize intensity based on dB level (0-1 scale)
       // 30dB = 0.0 (quietest), 100dB = 1.0 (loudest)
